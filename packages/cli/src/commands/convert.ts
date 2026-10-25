@@ -4,10 +4,12 @@ import { basename, extname, resolve } from 'node:path'
 import { defineCommand } from 'citty'
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
+import { layoutAuthoredNodes } from '@open-pencil/core/layout'
+import { prepareGraphFonts } from '@open-pencil/core/text'
 
 import { requireFile } from '#cli/app/client'
 import { ok, printError } from '#cli/format'
-import { loadDocument, populateWholeDocument } from '#cli/headless'
+import { loadDocument, measureTextHeadlessly, populateWholeDocument } from '#cli/headless'
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 
@@ -52,6 +54,15 @@ export default defineCommand({
     const file = requireFile(args.file)
     const graph = await loadDocument(file)
     populateWholeDocument(graph)
+    // A document that stores no layout, such as a .pen file, was laid out as it was read, with
+    // its text estimated. The output keeps those sizes, so lay it out again with its text
+    // measured in its own fonts, as the app and raster export draw it.
+    if (io.findReader(file)?.role !== 'native-document') {
+      await measureTextHeadlessly()
+      const pageIds = graph.getPages(true).map((page) => page.id)
+      await prepareGraphFonts(graph, pageIds)
+      layoutAuthoredNodes(graph, pageIds)
+    }
     const result = await io.writeDocument(format, graph)
     const output = args.output ? resolve(args.output) : defaultOutput(file, format)
     await writeFile(output, result.data as Uint8Array)
