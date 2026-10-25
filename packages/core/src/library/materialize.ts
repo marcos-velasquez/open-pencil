@@ -1,4 +1,4 @@
-import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import type { LibraryAssetSource, SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import { cloneNodeProps } from '@open-pencil/scene-graph/copy'
 
 import { remapCopiedReferences } from './copied-references'
@@ -15,7 +15,7 @@ export interface MaterializedLibraryAsset {
   created: boolean
 }
 
-function getInternalLibraryPage(graph: SceneGraph): SceneNode {
+export function getInternalLibraryPage(graph: SceneGraph): SceneNode {
   const existing = graph
     .getPages(true)
     .find((page) => page.internalOnly && page.name === INTERNAL_LIBRARY_PAGE_NAME)
@@ -69,38 +69,45 @@ export function copyLibraryTree(
     copyLibraryTree(source, target, childId, created.id, mappedIds)
 }
 
+/**
+ * The library identity a copy of the revision layer `sourceId` carries as a definition: its
+ * asset's, or, for a component other assets use, the component's own key.
+ */
+export function libraryDefinitionSource(
+  revision: ComponentLibraryRevision,
+  sourceId: string
+): LibraryAssetSource | null {
+  const descriptor = revision.manifest.assets.find((asset) => asset.sourceNodeId === sourceId)
+  const source = revision.graph.getNode(sourceId)
+  const assetKey =
+    descriptor?.key ??
+    (source?.type === 'COMPONENT' || source?.type === 'COMPONENT_SET'
+      ? (source.componentKey ?? source.sourceLibraryKey ?? source.publishId)
+      : null)
+  if (!assetKey) return null
+  return {
+    identity: {
+      libraryId: revision.manifest.libraryId,
+      assetKey,
+      revisionId: revision.manifest.revisionId
+    },
+    sourceNodeId: sourceId,
+    readOnly: true
+  }
+}
+
 function markDefinitions(
   graph: SceneGraph,
   revision: ComponentLibraryRevision,
   mappedIds: Map<string, string>
 ): void {
-  const descriptorsBySourceId = new Map(
-    revision.manifest.assets.map((asset) => [asset.sourceNodeId, asset])
-  )
   remapCopiedReferences(graph, mappedIds)
   for (const [sourceId, targetId] of mappedIds) {
     const target = graph.getNode(targetId)
     if (!target) continue
-    const descriptor = descriptorsBySourceId.get(sourceId)
-    const source = revision.graph.getNode(sourceId)
-    const sourceAssetKey =
-      descriptor?.key ??
-      (source?.type === 'COMPONENT' || source?.type === 'COMPONENT_SET'
-        ? (source.componentKey ?? source.sourceLibraryKey ?? source.publishId)
-        : null)
     graph.updateNode(targetId, {
       locked: true,
-      librarySource: sourceAssetKey
-        ? {
-            identity: {
-              libraryId: revision.manifest.libraryId,
-              assetKey: sourceAssetKey,
-              revisionId: revision.manifest.revisionId
-            },
-            sourceNodeId: sourceId,
-            readOnly: true
-          }
-        : target.librarySource
+      librarySource: libraryDefinitionSource(revision, sourceId) ?? target.librarySource
     })
   }
 }

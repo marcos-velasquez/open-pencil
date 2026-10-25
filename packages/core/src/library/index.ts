@@ -1,4 +1,5 @@
 export * from './asset-keys'
+export * from './definition-updates'
 export * from './definitions'
 export * from './diff'
 export * from './hash'
