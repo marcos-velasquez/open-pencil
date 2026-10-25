@@ -1,0 +1,1 @@
+- `openpencil convert` measures a `.pen` file's text in its own fonts, so converted tags and buttons keep their width.
