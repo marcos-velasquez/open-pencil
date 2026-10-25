@@ -1,0 +1,1 @@
+- Published library revisions keep their instances' overrides, and revisions stored in filesystem and storage catalogs can be inserted again.
