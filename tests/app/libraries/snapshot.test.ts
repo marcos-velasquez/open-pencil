@@ -136,6 +136,7 @@ describe('component library snapshots', () => {
       graph
     })
     // A catalog that stores revisions as JSON, as files and remote storage do.
+    // eslint-disable-next-line unicorn/prefer-structured-clone -- exercise the JSON boundary
     const stored = JSON.parse(JSON.stringify(serializeLibraryRevision(revision)))
     const restored = deserializeLibraryRevision(stored).graph
     const restoredButton = [...restored.getAllNodes()].find(
@@ -177,6 +178,7 @@ describe('component library snapshots', () => {
         documentColorSpace: 'srgb'
       }
     }
+    // eslint-disable-next-line unicorn/prefer-structured-clone -- exercise the JSON boundary
     const restored = deserializeLibraryRevision(JSON.parse(JSON.stringify(legacy))).graph
     for (const node of restored.getAllNodes()) {
       expect(node.instanceOverrides.self).toBeInstanceOf(Map)
