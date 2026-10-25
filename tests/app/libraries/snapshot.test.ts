@@ -10,6 +10,7 @@ import {
   serializeLibraryRevision
 } from '@open-pencil/core/library'
 import { SceneGraph } from '@open-pencil/scene-graph'
+import { recordInstanceOverride } from '@open-pencil/scene-graph/instances'
 
 function setupLibraryGraph() {
   const graph = new SceneGraph()
@@ -120,6 +121,67 @@ describe('component library snapshots', () => {
       ? restored.graph.getChildren(button.id).find((node) => node.type === 'INSTANCE')
       : undefined
     expect(restored.graph.getNode(nested?.componentId ?? '')?.componentKey).toBe('icon')
+  })
+
+  test('keeps the overrides of nested instances, under the IDs of the stored layers', async () => {
+    const { graph, button } = setupLibraryGraph()
+    const nested = graph.getChildren(button.id).find((node) => node.type === 'INSTANCE')
+    const glyph = nested ? graph.getChildren(nested.id)[0] : undefined
+    if (!nested || !glyph) throw new Error('Expected a nested instance with a copy')
+    graph.updateNode(glyph.id, { opacity: 0.5 })
+    recordInstanceOverride(graph, glyph.id, ['opacity'])
+    const revision = await createLibraryRevision({
+      libraryId: 'design-system',
+      name: 'Design system',
+      graph
+    })
+    // A catalog that stores revisions as JSON, as files and remote storage do.
+    const stored = JSON.parse(JSON.stringify(serializeLibraryRevision(revision)))
+    const restored = deserializeLibraryRevision(stored).graph
+    const restoredButton = [...restored.getAllNodes()].find(
+      (node) => node.componentKey === 'button'
+    )
+    const restoredNested = restoredButton
+      ? restored.getChildren(restoredButton.id).find((node) => node.type === 'INSTANCE')
+      : undefined
+    const restoredGlyph = restoredNested ? restored.getChildren(restoredNested.id)[0] : undefined
+    if (!restoredNested || !restoredGlyph) throw new Error('Expected the restored copy')
+    expect([...restoredNested.instanceOverrides.descendants.keys()]).toEqual([restoredGlyph.id])
+    expect(restoredNested.instanceOverrides.descendants.get(restoredGlyph.id)?.has('opacity')).toBe(
+      true
+    )
+  })
+
+  test('reads overrides of revisions stored before they were serialized', () => {
+    const { graph, button } = setupLibraryGraph()
+    const snapshot = extractLibrarySnapshot(graph, [button.id]).graph
+    const legacy = {
+      manifest: {
+        schemaVersion: 1,
+        libraryId: 'design-system',
+        name: 'Design system',
+        revisionId: 'legacy',
+        previousRevisionId: null,
+        publishedAt: '2026-01-01T00:00:00.000Z',
+        description: '',
+        assets: []
+      },
+      graph: {
+        rootId: snapshot.rootId,
+        // JSON wrote each override `Map` as an empty object.
+        nodes: [...snapshot.nodes].map(([id, node]) => [id, { ...node, instanceOverrides: {} }]),
+        images: [],
+        variables: [],
+        variableCollections: [],
+        activeMode: [],
+        documentColorSpace: 'srgb'
+      }
+    }
+    const restored = deserializeLibraryRevision(JSON.parse(JSON.stringify(legacy))).graph
+    for (const node of restored.getAllNodes()) {
+      expect(node.instanceOverrides.self).toBeInstanceOf(Map)
+      expect(node.instanceOverrides.descendants).toBeInstanceOf(Map)
+    }
   })
 
   test('publishes immutable revisions with optimistic conflict detection', async () => {

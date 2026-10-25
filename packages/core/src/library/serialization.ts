@@ -1,15 +1,36 @@
 import { SceneGraph } from '@open-pencil/scene-graph'
 import type { SceneNode } from '@open-pencil/scene-graph'
+import {
+  cloneInstanceOverrideState,
+  deserializeInstanceOverrideState,
+  serializeInstanceOverrideState,
+  type InstanceOverrideState,
+  type SerializedInstanceOverrideState
+} from '@open-pencil/scene-graph/instances/overrides'
 
 import type { PortableSceneGraphData } from '#core/kiwi/fig/parse/portable-data'
 
 import type { ComponentLibraryManifest, ComponentLibraryRevision } from './types'
 
-export type SerializedLibraryGraph = PortableSceneGraphData
+/** A node as a catalog stores it: its instance overrides as arrays, which JSON keeps. */
+export type SerializedLibraryNode = Omit<SceneNode, 'instanceOverrides'> & {
+  instanceOverrides: SerializedInstanceOverrideState
+}
+
+export type SerializedLibraryGraph = Omit<PortableSceneGraphData, 'nodes'> & {
+  nodes: Array<[string, SerializedLibraryNode]>
+}
 
 export interface SerializedComponentLibraryRevision {
   manifest: ComponentLibraryManifest
   graph: SerializedLibraryGraph
+}
+
+function serializeLibraryNode(node: SceneNode): SerializedLibraryNode {
+  return {
+    ...structuredClone(node),
+    instanceOverrides: serializeInstanceOverrideState(node.instanceOverrides)
+  }
 }
 
 export function serializeLibraryRevision(
@@ -19,7 +40,7 @@ export function serializeLibraryRevision(
     manifest: structuredClone(revision.manifest),
     graph: {
       rootId: revision.graph.rootId,
-      nodes: [...revision.graph.nodes].map(([id, node]) => [id, structuredClone(node)]),
+      nodes: [...revision.graph.nodes].map(([id, node]) => [id, serializeLibraryNode(node)]),
       images: [...revision.graph.images].map(([hash, bytes]) => [hash, new Uint8Array(bytes)]),
       variables: [...revision.graph.variables].map(([id, variable]) => [
         id,
@@ -35,8 +56,26 @@ export function serializeLibraryRevision(
   }
 }
 
-function cloneLibraryNode(node: SceneNode): SceneNode {
-  const cloned = structuredClone(node)
+function isInstanceOverrideState(state: unknown): state is InstanceOverrideState {
+  return !!state && typeof state === 'object' && 'self' in state && state.self instanceof Map
+}
+
+/**
+ * The override state of a stored node. A revision stored before overrides were serialized keeps
+ * them as `Map`s when it was structured-cloned, and as `{}` once it went through JSON.
+ */
+function restoreInstanceOverrides(state: unknown): InstanceOverrideState {
+  return isInstanceOverrideState(state)
+    ? cloneInstanceOverrideState(state)
+    : deserializeInstanceOverrideState(state)
+}
+
+function cloneLibraryNode(node: SerializedLibraryNode): SceneNode {
+  const { instanceOverrides, ...fields } = structuredClone(node)
+  const cloned: SceneNode = {
+    ...fields,
+    instanceOverrides: restoreInstanceOverrides(instanceOverrides)
+  }
   return Array.isArray(cloned.guides) ? cloned : { ...cloned, guides: [] }
 }
 

@@ -1,8 +1,8 @@
 import * as v from 'valibot'
 
-import type { SceneNode, Variable, VariableCollection } from '@open-pencil/scene-graph'
+import type { Variable, VariableCollection } from '@open-pencil/scene-graph'
 
-import type { SerializedComponentLibraryRevision } from './serialization'
+import type { SerializedComponentLibraryRevision, SerializedLibraryNode } from './serialization'
 import { COMPONENT_LIBRARY_SCHEMA_VERSION } from './types'
 import type { LibrarySummary, StoredLibraryLatestManifest } from './types'
 
@@ -32,7 +32,9 @@ const serializedCollectionShapeSchema = v.looseObject({
  * the fields deserialization and integrity validation dereference; the remaining fields pass
  * through, since a full SceneNode schema would duplicate the Scene Graph types.
  */
-const serializedNodeSchema = v.custom<SceneNode>((value) => v.is(serializedNodeShapeSchema, value))
+const serializedNodeSchema = v.custom<SerializedLibraryNode>((value) =>
+  v.is(serializedNodeShapeSchema, value)
+)
 const serializedVariableSchema = v.custom<Variable>((value) =>
   v.is(serializedVariableShapeSchema, value)
 )
