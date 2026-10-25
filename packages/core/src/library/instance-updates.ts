@@ -1,4 +1,6 @@
-import type { SceneGraph } from '@open-pencil/scene-graph'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import { findInstanceAncestor, recordInstanceOverride } from '@open-pencil/scene-graph/instances'
+import { setInstanceOverride } from '@open-pencil/scene-graph/instances/overrides'
 
 import { findLibraryDefinition } from './definitions'
 import type { ComponentLibraryRevision, LibraryAssetDescriptor } from './types'
@@ -75,4 +77,102 @@ export function planOutdatedLibraryInstances(
     })
   }
   return updates
+}
+
+/** A layer's place in an instance: the names down to it, each with its rank among namesakes. */
+function layerPath(graph: SceneGraph, rootId: string, node: SceneNode): string {
+  const parts: string[] = []
+  for (let id: string | null = node.id; id && id !== rootId;) {
+    const layer = graph.getNode(id)
+    if (!layer) break
+    const siblings = layer.parentId ? (graph.getNode(layer.parentId)?.childIds ?? []) : []
+    const namesakes = siblings.filter((siblingId) => graph.getNode(siblingId)?.name === layer.name)
+    parts.unshift(`${layer.name}#${namesakes.indexOf(layer.id)}`)
+    id = layer.parentId
+  }
+  return parts.join('/')
+}
+
+interface CapturedOverride {
+  path: string
+  /** A swap of a nested instance, applied before the fields, since it rebuilds the layers. */
+  componentId?: string
+  fields: Partial<Record<string, unknown>>
+  bindings: [field: string, value: unknown][]
+}
+
+/** The overrides the instance `rootId` and the instances in it carry, by the place of each layer. */
+function captureOverrides(graph: SceneGraph, rootId: string): CapturedOverride[] {
+  const captured: CapturedOverride[] = []
+  const queue = [rootId]
+  for (const id of queue) {
+    const node = graph.getNode(id)
+    if (!node) continue
+    queue.push(...node.childIds)
+    if (node.type !== 'INSTANCE') continue
+    const states = [...node.instanceOverrides.descendants]
+    // A nested instance's own fields are overrides of the layer it is in the root instance.
+    if (id !== rootId) states.push([id, node.instanceOverrides.self])
+    for (const [targetId, overridden] of states) {
+      const target = graph.getNode(targetId)
+      if (!target) continue
+      const entry: CapturedOverride = {
+        path: layerPath(graph, rootId, target),
+        fields: {},
+        bindings: []
+      }
+      for (const [field, value] of overridden) {
+        if (field === 'sourceComponentId') continue
+        if (field === 'componentId' && typeof value === 'string') entry.componentId = value
+        else if (field.startsWith('boundVariables/')) entry.bindings.push([field, value])
+        else if (field in target)
+          entry.fields[field] = structuredClone(target[field as keyof SceneNode])
+      }
+      captured.push(entry)
+    }
+  }
+  return captured
+}
+
+function layersByPath(graph: SceneGraph, rootId: string): Map<string, SceneNode> {
+  const layers = new Map<string, SceneNode>()
+  const queue = [...(graph.getNode(rootId)?.childIds ?? [])]
+  for (const id of queue) {
+    const node = graph.getNode(id)
+    if (!node) continue
+    layers.set(layerPath(graph, rootId, node), node)
+    queue.push(...node.childIds)
+  }
+  return layers
+}
+
+/**
+ * Points an instance at another revision of its library component, keeping the overrides its
+ * layers carry, as Figma does when it updates a library component: each lands on the layer with
+ * the same name and place in the new revision, and one whose layer is gone is dropped.
+ */
+export function swapLibraryInstance(
+  graph: SceneGraph,
+  instanceId: string,
+  componentId: string
+): void {
+  const captured = captureOverrides(graph, instanceId)
+  graph.swapInstanceComponent(instanceId, componentId)
+  for (const entry of captured) {
+    const target = layersByPath(graph, instanceId).get(entry.path)
+    if (entry.componentId && target?.type === 'INSTANCE' && graph.getNode(entry.componentId))
+      graph.swapInstanceComponent(target.id, entry.componentId)
+  }
+  const layers = layersByPath(graph, instanceId)
+  for (const entry of captured) {
+    const target = layers.get(entry.path)
+    if (!target) continue
+    graph.updateNode(target.id, entry.fields as Partial<SceneNode>)
+    recordInstanceOverride(graph, target.id, Object.keys(entry.fields))
+    const owner = findInstanceAncestor(graph, target.id)
+    if (!owner) continue
+    for (const [field, value] of entry.bindings) {
+      setInstanceOverride(owner.instanceOverrides, owner.id, target.id, field, value)
+    }
+  }
 }
