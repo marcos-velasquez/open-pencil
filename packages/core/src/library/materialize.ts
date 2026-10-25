@@ -1,5 +1,6 @@
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import { cloneNodeProps } from '@open-pencil/scene-graph/copy'
+import { remapInstanceOverrideState } from '@open-pencil/scene-graph/instances/overrides'
 
 import { findLibraryDefinition } from './definitions'
 import { assertLibraryAssetKey, assertLibraryId, libraryAssetIdentityKey } from './identity'
@@ -76,10 +77,19 @@ function markDefinitions(
   const descriptorsBySourceId = new Map(
     revision.manifest.assets.map((asset) => [asset.sourceNodeId, asset])
   )
+  // The revision keeps its own variables' IDs; only its nodes are copied under new ones.
+  const references = { node: (id: string) => mappedIds.get(id) ?? id, variable: (id: string) => id }
   for (const [sourceId, targetId] of mappedIds) {
     const target = graph.getNode(targetId)
     if (!target) continue
     const componentId = target.componentId ? mappedIds.get(target.componentId) : undefined
+    // An instance's overrides name its layers, and swaps their components, by revision ID.
+    const overrides = target.instanceOverrides
+    if (overrides.self.size > 0 || overrides.descendants.size > 0) {
+      graph.updateNode(targetId, {
+        instanceOverrides: remapInstanceOverrideState(overrides, references)
+      })
+    }
     const descriptor = descriptorsBySourceId.get(sourceId)
     const source = revision.graph.getNode(sourceId)
     const sourceAssetKey =

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { createLibraryRevision, materializeLibraryAsset } from '@open-pencil/core/library'
 import { SceneGraph } from '@open-pencil/scene-graph'
+import { recordInstanceOverride } from '@open-pencil/scene-graph/instances'
 
 function sourceLibrary() {
   const graph = new SceneGraph()
@@ -91,5 +92,29 @@ describe('library materialization', () => {
     const second = materializeLibraryAsset(consumer, revision, 'button-set')
     expect(second).toEqual({ ...first, created: false })
     expect(consumer.nodes.size).toBe(nodeCount)
+  })
+
+  test('keeps the overrides of nested instances under the IDs of the materialized layers', async () => {
+    const source = sourceLibrary()
+    const nested = source.graph.getChildren(source.small.id)[0]
+    const glyph = nested ? source.graph.getChildren(nested.id)[0] : undefined
+    if (!nested || !glyph) throw new Error('Expected the nested icon copy')
+    source.graph.updateNode(glyph.id, { opacity: 0.25 })
+    recordInstanceOverride(source.graph, glyph.id, ['opacity'])
+    const revision = await createLibraryRevision({
+      libraryId: 'design-system',
+      name: 'Design system',
+      graph: source.graph
+    })
+
+    const consumer = new SceneGraph()
+    const { componentId } = materializeLibraryAsset(consumer, revision, 'button-set')
+    const materialized = consumer.getChildren(componentId)[0]
+    const materializedGlyph = materialized ? consumer.getChildren(materialized.id)[0] : undefined
+    if (!materialized || !materializedGlyph) throw new Error('Expected the materialized copy')
+    expect([...materialized.instanceOverrides.descendants.keys()]).toEqual([materializedGlyph.id])
+    // A sync, as reopening the file runs, keeps the overridden value.
+    consumer.syncInstance(materialized.id)
+    expect(consumer.getNode(materializedGlyph.id)?.opacity).toBe(0.25)
   })
 })
