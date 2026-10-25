@@ -12,6 +12,7 @@ import {
   createSelectiveLibraryRevision,
   discoverPublishableLibraryChanges,
   readSourceLibraryPublication,
+  swapLibraryInstance,
   writeSourceLibraryPublication,
   type ComponentLibraryRevision,
   type LibraryCatalog,
@@ -236,7 +237,7 @@ export class LibraryService implements ComponentCatalog {
         updatable
       )
       for (const plan of appliedPlans) {
-        editor.graph.swapInstanceComponent(plan.instanceId, plan.componentId)
+        swapLibraryInstance(editor.graph, plan.instanceId, plan.componentId)
         reapplyInstanceComponentProperties(editor, plan.instanceId)
       }
       editor.updateEnabledLibraries((bindings) =>
@@ -246,7 +247,7 @@ export class LibraryService implements ComponentCatalog {
     }
     const restorePrevious = () => {
       for (const plan of appliedPlans) {
-        editor.graph.swapInstanceComponent(plan.instanceId, plan.previousComponentId)
+        swapLibraryInstance(editor.graph, plan.instanceId, plan.previousComponentId)
         reapplyInstanceComponentProperties(editor, plan.instanceId)
       }
       for (const rootId of createdRootIds) {
@@ -417,14 +418,14 @@ export class LibraryService implements ComponentCatalog {
   ): void {
     const apply = () => {
       for (const plan of plans) {
-        editor.graph.swapInstanceComponent(plan.instanceId, plan.componentId)
+        swapLibraryInstance(editor.graph, plan.instanceId, plan.componentId)
         reapplyInstanceComponentProperties(editor, plan.instanceId)
       }
       editor.requestRender()
     }
     const restore = () => {
       for (const plan of plans) {
-        editor.graph.swapInstanceComponent(plan.instanceId, plan.previousComponentId)
+        swapLibraryInstance(editor.graph, plan.instanceId, plan.previousComponentId)
         reapplyInstanceComponentProperties(editor, plan.instanceId)
       }
       editor.requestRender()
