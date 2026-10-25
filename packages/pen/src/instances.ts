@@ -3,6 +3,7 @@ import { isEqual } from 'es-toolkit/predicate'
 
 import { generateId, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import {
+  detachInstance,
   INSTANCE_OVERRIDE_FIELDS,
   populateInstanceChildren,
   recordInstanceOverride
@@ -75,6 +76,7 @@ function replaceLayer(build: Build, target: SceneNode, replacement: PenOverride)
     graph.deleteNode(target.id)
     const id = createSceneNode(pen, parentId, build)
     if (id && index >= 0) graph.insertChildAt(id, parentId, index)
+    if (id) build.replaced.add(id)
   })
 }
 
@@ -106,11 +108,28 @@ function overrideLayer(build: Build, target: SceneNode, override: PenOverride): 
         const replaced = target.childIds
         for (const childId of replaced) graph.deleteNode(childId)
         for (const child of children) createSceneNode(child, target.id, build)
+        build.replaced.add(target.id)
       }
     } finally {
       leave?.()
     }
   })
+}
+
+/**
+ * Detaches the instances holding a layer an override put in place of copies. An instance keeps
+ * its component's layers, overriding their fields but never replacing them, so such an instance
+ * becomes a frame that keeps what it shows, as detaching it in Figma does.
+ */
+function detachReplacingInstances(build: Build): void {
+  const { graph } = build
+  for (const id of build.replaced) {
+    for (let node = graph.getNode(id); node;) {
+      if (node.type === 'INSTANCE') detachInstance(graph, node.id)
+      node = node.parentId ? graph.getNode(node.parentId) : undefined
+    }
+  }
+  build.replaced.clear()
 }
 
 /** Gives an instance's copies their overrides; a key with a `type` replaces the layer. */
@@ -156,6 +175,8 @@ export function populateInstances(build: Build): void {
       copies.push(...graph.getChildren(copy.id))
     }
     applyDescendants(build, instance, ref)
+    // Before anything copies this instance, so the copies are of what it became.
+    detachReplacingInstances(build)
   }
 
   // A replacement may hold instances of its own, which join the map as they are read.

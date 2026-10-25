@@ -141,6 +141,44 @@ describe('parsePenFile — instances', () => {
     expect(getNodeOrThrow(graph, 'square').fills[0]?.color).toMatchObject({ r: 1, g: 1, b: 0 })
   })
 
+  test('detaches an instance whose override replaces a layer or its children', () => {
+    const graph = parseDocument([
+      button,
+      card,
+      {
+        id: 'replacedLayer',
+        type: 'ref',
+        ref: 'button',
+        descendants: { dot: { type: 'rectangle', id: 'square', width: 10, height: 10 } }
+      },
+      {
+        id: 'replacedChildren',
+        type: 'ref',
+        ref: 'card',
+        descendants: {
+          cardButton: { children: [{ id: 'note', type: 'text', content: 'Note' }] }
+        }
+      },
+      { id: 'kept', type: 'ref', ref: 'card' }
+    ])
+    // Instances keep their component's layers, so these become frames showing the same layers.
+    expect(getNodeOrThrow(graph, 'replacedLayer')).toMatchObject({
+      type: 'FRAME',
+      componentId: null
+    })
+    expect(graph.getChildren('replacedLayer').map((node) => node.type)).toEqual([
+      'RECTANGLE',
+      'TEXT'
+    ])
+    expect(getNodeOrThrow(graph, 'replacedChildren').type).toBe('FRAME')
+    // The card's second layer is its button.
+    const nested = expectDefined(graph.getChildren('replacedChildren')[1], 'nested button')
+    expect(nested.type).toBe('FRAME')
+    expect(graph.getChildren(nested.id).map((node) => node.text)).toEqual(['Note'])
+    expect(getNodeOrThrow(graph, 'kept').type).toBe('INSTANCE')
+    expect(graph.getChildren('kept')[1]?.type).toBe('INSTANCE')
+  })
+
   test('hides a descendant through its enabled field', () => {
     const graph = parseDocument([
       button,
