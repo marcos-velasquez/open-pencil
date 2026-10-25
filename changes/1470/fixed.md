@@ -1,0 +1,1 @@
+- Updating library components keeps the overrides of their instances.
