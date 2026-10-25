@@ -1,0 +1,1 @@
+- `.pen` instance overrides survive a sync and saving as `.fig`, instead of falling back to the component's values.
