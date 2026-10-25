@@ -86,6 +86,21 @@ describe('parsePenFile — instances', () => {
     expect(getNodeOrThrow(graph, 'label').text).toBe('Button')
   })
 
+  test("records the instance's own fields as overrides, its size only when it sets one", () => {
+    const graph = parseDocument([
+      button,
+      { id: 'tinted', type: 'ref', ref: 'button', fill: '#119944' },
+      { id: 'sized', type: 'ref', ref: 'button', width: 200 }
+    ])
+    expect(hasInstanceOverride(graph, 'tinted', 'fills')).toBe(true)
+    expect(hasInstanceOverride(graph, 'tinted', 'width')).toBe(false)
+    expect(hasInstanceOverride(graph, 'sized', 'width')).toBe(true)
+
+    syncInstance(graph, 'tinted')
+
+    expect(getNodeOrThrow(graph, 'tinted').fills[0]?.color).toMatchObject({ r: 0x11 / 255 })
+  })
+
   test('records a descendant override so a sync keeps it', () => {
     const graph = parseDocument([
       button,

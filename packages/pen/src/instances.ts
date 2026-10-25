@@ -91,6 +91,23 @@ function recordChangedFields(
   recordInstanceOverride(graph, target.id, changed)
 }
 
+/**
+ * Records as the instance's own overrides the fields its `ref` set apart from its component's.
+ * A size counts only when the `ref` sets it: otherwise it is the layout's, which follows the
+ * component's.
+ */
+function recordOwnFields(graph: SceneGraph, instance: SceneNode, ref: PenNode): void {
+  const component = instance.componentId ? graph.getNode(instance.componentId) : undefined
+  if (!component) return
+  const changed = INSTANCE_OVERRIDE_FIELDS.filter(
+    (field) =>
+      (field !== 'width' || 'width' in ref) &&
+      (field !== 'height' || 'height' in ref) &&
+      !isEqual(instance[field], component[field])
+  )
+  recordInstanceOverride(graph, instance.id, changed)
+}
+
 function overrideLayer(build: Build, target: SceneNode, override: PenOverride): void {
   const { graph, ctx, effective } = build
   const base = effective.get(target.id) ?? { type: 'frame', id: target.id }
@@ -144,6 +161,7 @@ export function populateInstances(build: Build): void {
       if (graph.isDescendant(nested, component.id)) populate(nested)
     }
     populateInstanceChildren(graph, instance.id, component.id)
+    recordOwnFields(graph, instance, ref)
     const copies = graph.getChildren(instance.id)
     for (const copy of copies) {
       const source = copy.componentId
