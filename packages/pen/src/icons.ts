@@ -1,9 +1,11 @@
+import { pick } from 'es-toolkit/object'
 import { isEqual } from 'es-toolkit/predicate'
 
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import { BLACK } from '@open-pencil/scene-graph/constants'
 import { readIconTint } from '@open-pencil/scene-graph/icons'
 import {
+  INSTANCE_SYNC_PROPS,
   instanceMainComponent,
   populateInstanceChildren,
   recordInstanceOverride,
@@ -138,6 +140,24 @@ function recolorGlyph(graph: SceneGraph, instanceId: string, color: Color): void
 }
 
 /**
+ * Keeps what the icon instance sets on itself, such as its opacity or effects, as overrides of it:
+ * the icon component is shared by every use of the glyph at that size, so linking to it would
+ * otherwise give the instance the component's values.
+ */
+function keepOwnFields(
+  graph: SceneGraph,
+  instanceId: string,
+  own: Partial<SceneNode>,
+  componentId: string
+): void {
+  const component = graph.getNode(componentId)
+  const differing = INSTANCE_SYNC_PROPS.filter((field) => !isEqual(own[field], component?.[field]))
+  if (differing.length === 0) return
+  graph.updateNode(instanceId, pick(own, differing))
+  recordInstanceOverride(graph, instanceId, differing)
+}
+
+/**
  * Makes the icon instance `node` show its icon: the icon component for its glyph and size,
  * swapped in when an override changed either, with the glyph in the icon's fill colour.
  */
@@ -145,6 +165,7 @@ export function useIconComponent(node: SceneNode, pen: PenNode, build: Build): v
   const { graph } = build
   const color = node.fills.find((fill) => fill.type === 'SOLID')?.color ?? { ...BLACK }
   node.fills = []
+  const own = structuredClone(pick(node, INSTANCE_SYNC_PROPS))
   const componentId = iconComponent(build, pen, node.width, node.height)
   if (!node.componentId) {
     graph.updateNode(node.id, { componentId })
@@ -152,5 +173,6 @@ export function useIconComponent(node: SceneNode, pen: PenNode, build: Build): v
   } else if (instanceMainComponent(graph, node)?.id !== componentId) {
     swapInstanceComponent(graph, node.id, componentId, { keepName: true })
   }
+  keepOwnFields(graph, node.id, own, componentId)
   recolorGlyph(graph, node.id, color)
 }

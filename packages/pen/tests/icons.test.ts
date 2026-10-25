@@ -3,7 +3,11 @@ import { describe, expect, test } from 'bun:test'
 import type { PenNode } from '@open-pencil/pen'
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import { withIconTint } from '@open-pencil/scene-graph/icons'
-import { hasInstanceOverride, instanceMainComponent } from '@open-pencil/scene-graph/instances'
+import {
+  hasInstanceOverride,
+  instanceMainComponent,
+  syncInstance
+} from '@open-pencil/scene-graph/instances'
 import type { Color } from '@open-pencil/scene-graph/primitives'
 
 import { expectDefined, getNodeOrThrow } from './helpers/assert'
@@ -113,5 +117,54 @@ describe('parsePenFile — icons in components', () => {
     )
     expect(instanceMainComponent(graph, glyphOf(graph, 'larger'))?.name).toBe('lucide/zap/24x24')
     expect(getNodeOrThrow(graph, 'loose').type).toBe('FRAME')
+  })
+
+  test('keeps what an icon sets on itself when an instance swaps its component', () => {
+    const faded: PenNode = {
+      id: 'faded-item',
+      type: 'frame',
+      reusable: true,
+      children: [
+        {
+          id: 'faded-glyph',
+          type: 'icon',
+          library: 'lucide',
+          icon: 'zap',
+          width: 16,
+          height: 16,
+          opacity: 0.5
+        }
+      ]
+    }
+    const graph = parseDocument(
+      [
+        faded,
+        {
+          id: 'swapped',
+          type: 'ref',
+          ref: 'faded-item',
+          descendants: { 'faded-glyph': { icon: 'star' } }
+        },
+        {
+          id: 'fainter',
+          type: 'ref',
+          ref: 'faded-item',
+          descendants: { 'faded-glyph': { icon: 'star', opacity: 0.25 } }
+        }
+      ],
+      {},
+      { icons }
+    )
+    expect(getNodeOrThrow(graph, 'faded-glyph').opacity).toBe(0.5)
+    for (const [id, opacity] of [
+      ['swapped', 0.5],
+      ['fainter', 0.25]
+    ] as const) {
+      const glyph = glyphOf(graph, id)
+      expect(instanceMainComponent(graph, glyph)?.name).toBe('lucide/star/16x16')
+      expect(glyph.opacity).toBe(opacity)
+      syncInstance(graph, glyph.id)
+      expect(glyphOf(graph, id).opacity).toBe(opacity)
+    }
   })
 })
