@@ -1,1 +1,1 @@
-- Published library revisions keep their instances' overrides, and revisions stored in filesystem and storage catalogs can be inserted again.
+- Published library revisions keep their instances' overrides, both when stored in filesystem and storage catalogs and when inserted into a document.
