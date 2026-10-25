@@ -1,0 +1,1 @@
+- `.pen` instances whose overrides replace their layers open detached, as Figma's detach leaves them, so the document saves as `.fig`.
