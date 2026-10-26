@@ -36,7 +36,8 @@ function publishedRoots(graph: SceneGraph, assetNodeIds?: string[]): SceneNode[]
   return publishableLibraryRoots(graph).filter((node) => selected.has(node.id))
 }
 
-export function ensureLibraryAssetKeys(
+/** The keys `ensureLibraryAssetKeys` gives the components a library publishes, without giving them. */
+export function planLibraryAssetKeys(
   graph: SceneGraph,
   assetNodeIds?: string[]
 ): AssetKeyAssignment[] {
@@ -55,9 +56,19 @@ export function ensureLibraryAssetKeys(
     let suffix = 2
     while (used.has(assetKey)) assetKey = `${base}-${suffix++}`
     used.add(assetKey)
-    graph.updateNode(node.id, { componentKey: assetKey })
     return { nodeId: node.id, assetKey, existing: false }
   })
+}
+
+export function ensureLibraryAssetKeys(
+  graph: SceneGraph,
+  assetNodeIds?: string[]
+): AssetKeyAssignment[] {
+  const assignments = planLibraryAssetKeys(graph, assetNodeIds)
+  for (const { nodeId, assetKey, existing } of assignments) {
+    if (!existing) graph.updateNode(nodeId, { componentKey: assetKey })
+  }
+  return assignments
 }
 
 export function duplicateLibraryAssetKeys(graph: SceneGraph): Map<string, string[]> {

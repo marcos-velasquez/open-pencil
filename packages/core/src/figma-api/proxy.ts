@@ -16,6 +16,7 @@ import { slotPropertyId } from '@open-pencil/scene-graph/slots'
 
 import { assertNodeEditable } from '#core/editor/capabilities'
 import type { FigmaEffect } from '#core/figma-api/effects'
+import { planLibraryAssetKeys } from '#core/library/asset-keys'
 
 import { prepareFollowedFieldEdit, fitGroupsAround } from './accessor-utils'
 import { installBasicNodeProxyAccessors } from './accessors/basic'
@@ -276,12 +277,18 @@ export class FigmaNodeProxy {
     // alone; every page here is already loaded.
     if (type === 'CANVAS')
       Object.defineProperty(this, 'loadAsync', { value: () => Promise.resolve() })
-    // The key `importComponentByKeyAsync` takes, as components and component sets have in Figma.
+    // The key `importComponentByKeyAsync` takes, as components and component sets have in Figma:
+    // the one a library publishes the component under, which it gives from names when unkeyed.
     if (type === 'COMPONENT' || type === 'COMPONENT_SET') {
       Object.defineProperty(this, 'key', {
         get: () => {
           const node = graph.getNode(id)
-          return node?.componentKey ?? node?.sourceLibraryKey ?? id
+          return (
+            node?.componentKey ??
+            planLibraryAssetKeys(graph).find((assignment) => assignment.nodeId === id)?.assetKey ??
+            node?.sourceLibraryKey ??
+            id
+          )
         }
       })
     }

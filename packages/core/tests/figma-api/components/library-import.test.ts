@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { FigmaAPI } from '@open-pencil/core/figma-api'
+import { FigmaAPI, type FigmaComponentNode } from '@open-pencil/core/figma-api'
+import { ensureLibraryAssetKeys } from '@open-pencil/core/library'
 import { SceneGraph } from '@open-pencil/scene-graph'
 
 /** A document whose host brings in the components `library` holds, by key. */
@@ -44,5 +45,19 @@ describe('importing library components by key', () => {
     await expect(
       new FigmaAPI(new SceneGraph()).importComponentByKeyAsync('button')
     ).rejects.toThrow('No library component with key button')
+  })
+
+  test("reads an unkeyed component's key as its library will publish it, without giving it", () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('COMPONENT', page.id, { name: 'Button', componentKey: 'button' })
+    const unkeyed = graph.createNode('COMPONENT', page.id, { name: 'Button' })
+
+    const key = (new FigmaAPI(graph).getNodeById(unkeyed.id) as FigmaComponentNode | null)?.key
+
+    expect(graph.getNode(unkeyed.id)?.componentKey).toBeFalsy()
+    ensureLibraryAssetKeys(graph)
+    expect(key).toBe('button-2')
+    expect(graph.getNode(unkeyed.id)?.componentKey).toBe(key)
   })
 })
