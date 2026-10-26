@@ -1,1 +1,1 @@
-- A plain colour set over a variable-bound paint in an instance stays after the `.fig` file is reopened.
+- A plain colour set over a variable-bound paint in an instance stays after the `.fig` file is reopened, and so does a variable an outer instance binds over a nested plain colour.
