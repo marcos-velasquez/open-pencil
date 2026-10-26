@@ -135,9 +135,26 @@ describe('libraries update CLI', () => {
     const button = [...libraryGraph.getAllNodes()].find((node) => node.name === 'Button')
     if (!button) throw new Error('Expected the button')
     const accent = tokens(libraryGraph, { r: 0, g: 0, b: 1, a: 1 })
+    // A token the document has no namesake for.
+    const outline = libraryGraph.createVariable('outline', 'COLOR', accent.collectionId, {
+      r: 0,
+      g: 0,
+      b: 0,
+      a: 1
+    })
     libraryGraph.updateNode(button.id, {
       fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 1, a: 1 }, opacity: 1, visible: true }],
-      boundVariables: { 'fills/0/color': accent.id }
+      strokes: [
+        {
+          type: 'SOLID',
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          weight: 1,
+          opacity: 1,
+          visible: true,
+          align: 'INSIDE'
+        }
+      ],
+      boundVariables: { 'fills/0/color': accent.id, 'strokes/0/color': outline.id }
     })
     await Bun.write(source, await exportFigFile(libraryGraph))
     const consumer = new SceneGraph()
@@ -154,6 +171,7 @@ describe('libraries update CLI', () => {
       script
     )
     expect(imported.exitCode).toBe(0)
+    expect(imported.stderr).toContain('Variables with no match in the document: outline')
 
     const placed = await cli([
       'eval',
