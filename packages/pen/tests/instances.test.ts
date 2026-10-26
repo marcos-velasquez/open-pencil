@@ -204,6 +204,41 @@ describe('parsePenFile — instances', () => {
     expect(graph.getChildren('swappedBadge').map((node) => node.text)).toEqual(['New'])
   })
 
+  test('swaps a nested instance a replacement makes an instance of another component', () => {
+    const badge: PenNode = {
+      id: 'badge',
+      type: 'frame',
+      reusable: true,
+      children: [{ id: 'badgeLabel', type: 'text', content: 'New' }]
+    }
+    const graph = parseDocument([
+      button,
+      card,
+      badge,
+      {
+        id: 'withBadge',
+        type: 'ref',
+        ref: 'card',
+        descendants: {
+          cardButton: {
+            type: 'ref',
+            ref: 'badge',
+            name: 'Status',
+            descendants: { badgeLabel: { content: 'Sale' } }
+          }
+        }
+      }
+    ])
+    // As Figma's instance swap: the card stays an instance and its button shows the badge.
+    expect(getNodeOrThrow(graph, 'withBadge').type).toBe('INSTANCE')
+    const swapped = expectDefined(graph.getChildren('withBadge')[1], 'swapped button')
+    expect(swapped).toMatchObject({ type: 'INSTANCE', componentId: 'badge', name: 'Status' })
+    expect(graph.getChildren(swapped.id).map((node) => node.text)).toEqual(['Sale'])
+    // Its overrides are recorded, so a sync keeps them.
+    syncInstance(graph, 'withBadge')
+    expect(graph.getChildren(swapped.id).map((node) => node.text)).toEqual(['Sale'])
+  })
+
   test('hides a descendant through its enabled field', () => {
     const graph = parseDocument([
       button,

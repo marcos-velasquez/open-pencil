@@ -1,1 +1,1 @@
-- `.pen` instances whose overrides replace their layers open detached, as Figma's detach leaves them, so the document saves as `.fig`.
+- `.pen` documents whose instance overrides replace layers save as `.fig`: a nested instance replaced by another component is swapped, as in Figma, and an instance whose layers an override replaces otherwise opens detached.

@@ -6,11 +6,15 @@ import {
   detachInstance,
   INSTANCE_OVERRIDE_FIELDS,
   populateInstanceChildren,
-  recordInstanceOverride
+  recordInstanceOverride,
+  swapInstanceComponent
 } from '@open-pencil/scene-graph/instances'
 
 import { applyPenProperties, createSceneNode, type Build } from './nodes'
 import type { PenNode, PenOverride } from './schema'
+
+/** Fills an instance read from `.pen`, after the instances inside its component. */
+type Populate = (id: string) => void
 
 /** The layers a copy was made from, nearest first, through copies of copies. */
 function sources(graph: SceneGraph, node: SceneNode): Set<string> {
@@ -62,10 +66,16 @@ function inAncestorThemes<T>(build: Build, node: SceneNode, apply: () => T): T {
   }
 }
 
-function replaceLayer(build: Build, target: SceneNode, replacement: PenOverride): void {
+function replaceLayer(
+  build: Build,
+  target: SceneNode,
+  replacement: PenOverride,
+  populate: Populate
+): void {
   const { graph } = build
   const parentId = target.parentId
   if (!parentId) return
+  if (swapLayer(build, target, replacement, populate)) return
   const index = graph.getNode(parentId)?.childIds.indexOf(target.id) ?? -1
   const pen: PenNode = {
     ...replacement,
@@ -79,6 +89,42 @@ function replaceLayer(build: Build, target: SceneNode, replacement: PenOverride)
     // The parent's layers changed; a replacement that is itself an instance stays one.
     if (id) build.replaced.add(parentId)
   })
+}
+
+/**
+ * Swaps a nested instance an override replaces with an instance of another component for that
+ * component, as Figma's instance swap does, so the instances holding it stay instances. The
+ * replacement's own fields and overrides then apply to the swapped layer. Returns whether it
+ * swapped; any other replacement changes the layers of the instance holding it.
+ */
+function swapLayer(
+  build: Build,
+  target: SceneNode,
+  replacement: PenOverride,
+  populate: Populate
+): boolean {
+  const { graph, effective, instances } = build
+  const component =
+    typeof replacement.ref === 'string' ? build.components.get(replacement.ref) : undefined
+  if (target.type !== 'INSTANCE' || replacement.type !== 'ref' || component?.type !== 'frame')
+    return false
+  for (const nested of instances.keys()) {
+    if (graph.isDescendant(nested, component.id)) populate(nested)
+  }
+  swapInstanceComponent(graph, target.id, component.id)
+  if (graph.getNode(target.id)?.componentId !== component.id) return false
+  const {
+    children: _children,
+    reusable: _reusable,
+    descendants: _descendants,
+    ...fields
+  } = component
+  effective.set(target.id, { ...fields, id: target.id })
+  inheritCopyFields(build, target)
+  const { ref: _ref, type: _type, id: _id, descendants, ...own } = replacement
+  overrideLayer(build, target, own)
+  applyDescendants(build, target, descendants, populate)
+  return true
 }
 
 /**
@@ -134,12 +180,33 @@ function detachReplacingInstances(build: Build): void {
 }
 
 /** Gives an instance's copies their overrides; a key with a `type` replaces the layer. */
-function applyDescendants(build: Build, instance: SceneNode, ref: PenNode): void {
-  for (const [path, override] of Object.entries(ref.descendants ?? {})) {
+function applyDescendants(
+  build: Build,
+  instance: SceneNode,
+  descendants: PenNode['descendants'],
+  populate: Populate
+): void {
+  for (const [path, override] of Object.entries(descendants ?? {})) {
     const target = resolvePath(build.graph, instance, path)
     if (!target) continue
-    if (override.type) replaceLayer(build, target, override)
+    if (override.type) replaceLayer(build, target, override, populate)
     else overrideLayer(build, target, override)
+  }
+}
+
+/** Gives each copy inside `root` the pen.dev fields and placement of the layer it copies. */
+function inheritCopyFields(build: Build, root: SceneNode): void {
+  const { graph, effective, placements } = build
+  const copies = graph.getChildren(root.id)
+  for (const copy of copies) {
+    const source = copy.componentId
+    const fields = source ? effective.get(source) : undefined
+    if (fields) effective.set(copy.id, fields)
+    const placement = source ? placements.get(source) : undefined
+    if (placement) placements.set(copy.id, placement)
+    if (source && build.groupIds.has(source)) build.groupIds.add(copy.id)
+    if (source && build.aroundIds.has(source)) build.aroundIds.add(copy.id)
+    copies.push(...graph.getChildren(copy.id))
   }
 }
 
@@ -149,7 +216,7 @@ function applyDescendants(build: Build, instance: SceneNode, ref: PenNode): void
  * overrides; a copy keeps its source's pen.dev fields and placement.
  */
 export function populateInstances(build: Build): void {
-  const { graph, effective, placements, instances } = build
+  const { graph, instances } = build
   const done = new Set<string>()
 
   function populate(id: string): void {
@@ -164,18 +231,8 @@ export function populateInstances(build: Build): void {
       if (graph.isDescendant(nested, component.id)) populate(nested)
     }
     populateInstanceChildren(graph, instance.id, component.id)
-    const copies = graph.getChildren(instance.id)
-    for (const copy of copies) {
-      const source = copy.componentId
-      const fields = source ? effective.get(source) : undefined
-      if (fields) effective.set(copy.id, fields)
-      const placement = source ? placements.get(source) : undefined
-      if (placement) placements.set(copy.id, placement)
-      if (source && build.groupIds.has(source)) build.groupIds.add(copy.id)
-      if (source && build.aroundIds.has(source)) build.aroundIds.add(copy.id)
-      copies.push(...graph.getChildren(copy.id))
-    }
-    applyDescendants(build, instance, ref)
+    inheritCopyFields(build, instance)
+    applyDescendants(build, instance, ref.descendants, populate)
     // Before anything copies this instance, so the copies are of what it became.
     detachReplacingInstances(build)
   }
