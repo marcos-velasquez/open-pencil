@@ -189,4 +189,21 @@ describe('updating a library instance to another revision', () => {
     )
     expect(layer(graph, instance, tricky).text).toBe('Kept')
   })
+
+  test('keeps the scale of a numeric variable it bound', async () => {
+    const { graph, instance } = await updated(
+      { width: 80, label: 'Old' },
+      { width: 120, label: 'New' },
+      (graph, id) => {
+        const collection = graph.createCollection('Tokens')
+        const fade = graph.createVariable('fade', 'FLOAT', collection.id, 0.25)
+        const label = layer(graph, id, 'Label')
+        graph.bindVariable(label.id, 'opacity', fade.id)
+        // A binding read from a scaled instance resolves at twice its variable's value.
+        graph.updateNode(label.id, { variableBindingScales: { opacity: 2 } })
+        recordInstanceOverride(graph, label.id, ['opacity', 'boundVariables'])
+      }
+    )
+    expect(layer(graph, instance, 'Label').variableBindingScales.opacity).toBe(2)
+  })
 })
