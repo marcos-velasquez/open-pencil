@@ -85,10 +85,10 @@ function straightTextPathNetwork() {
 }
 
 async function setupPathText() {
-  const font = await fontManager.fetchBundledFont('/Inter-Regular.ttf')
+  const font = await fontManager.fetchBundledFont('/InterVariable.ttf')
   expect(font).toBeTruthy()
   if (!font) return null
-  fontManager.markLoaded('Inter', 'Regular', font)
+  await fontManager.markLoaded('Inter', 'Regular', font)
 
   const setupResult = setup()
   const glyphs: DerivedTextGlyph[] = [

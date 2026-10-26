@@ -18,7 +18,7 @@ export const runtimeScenarios: RuntimeScenario[] = [
   },
   {
     name: 'FIG NodeChange API',
-    code: "const { convertLineHeight, sceneNodeToKiwi } = await import('@open-pencil/fig/node-change'); if (convertLineHeight({ value: 120, units: 'PERCENT' }, 20) !== 24 || typeof sceneNodeToKiwi !== 'function') throw new Error('Fig NodeChange subpath failed')"
+    code: "const { convertLineHeight, sceneNodeToKiwi } = await import('@open-pencil/fig/node-change'); const lineHeight = convertLineHeight({ value: 1.5, units: 'RAW' }); if (lineHeight?.unit !== 'PERCENT' || lineHeight.value !== 150 || typeof sceneNodeToKiwi !== 'function') throw new Error('Fig NodeChange subpath failed')"
   },
   {
     name: 'FIG instance override API',
@@ -31,6 +31,10 @@ export const runtimeScenarios: RuntimeScenario[] = [
   {
     name: 'PEN parser',
     code: "const { parsePenFile } = await import('@open-pencil/pen'); const graph = parsePenFile(JSON.stringify({ version: '1', children: [{ id: 'frame', type: 'frame', width: 100, height: 50 }] })); if (graph.getPages()[0].childIds.length !== 1) throw new Error('Pen package smoke failed')"
+  },
+  {
+    name: 'draw.io codec',
+    code: 'const { parseDrawIOFile, writeDrawIOFile } = await import(\'@open-pencil/drawio\'); const file = parseDrawIOFile(\'<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="a" vertex="1" parent="1"/></root></mxGraphModel>\'); if (file?.pages[0]?.cells.length !== 1 || !writeDrawIOFile(file).startsWith(\'<mxfile\')) throw new Error(\'draw.io package smoke failed\')'
   },
   {
     name: 'Emit package',

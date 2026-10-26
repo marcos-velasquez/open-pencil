@@ -10,10 +10,10 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 beforeAll(async () => {
   await initCodec()
   const inter = expectDefined(
-    await fontManager.fetchBundledFont('/Inter-Regular.ttf'),
+    await fontManager.fetchBundledFont('/InterVariable.ttf'),
     'bundled Inter font'
   )
-  fontManager.markLoaded('Inter', 'Regular', inter)
+  await fontManager.markLoaded('Inter', 'Regular', inter)
 })
 
 test('keeps auto line height on text that mixes font sizes', async () => {

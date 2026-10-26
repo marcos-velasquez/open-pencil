@@ -31,13 +31,13 @@ async function createEditorWithRenderer() {
 }
 
 async function loadInterRegular() {
-  const data = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
-  fontManager.markLoaded('Inter', 'Regular', data)
+  const data = await Bun.file('packages/core/assets/InterVariable.ttf').arrayBuffer()
+  await fontManager.markLoaded('Inter', 'Regular', data)
 }
 
 async function loadInterBold() {
-  const data = await Bun.file('packages/core/assets/Inter-Bold.ttf').arrayBuffer()
-  fontManager.markLoaded('Inter', 'Bold', data)
+  const data = await Bun.file('packages/core/assets/InterVariable.ttf').arrayBuffer()
+  await fontManager.markLoaded('Inter', 'Bold', data)
 }
 
 async function loadNotoSansSC() {
@@ -45,7 +45,7 @@ async function loadNotoSansSC() {
   const text = await file.slice(0, 32).text()
   if (text.startsWith('version ')) return false
   const data = await file.arrayBuffer()
-  fontManager.markLoaded('Noto Sans SC', 'Regular', data)
+  await fontManager.markLoaded('Noto Sans SC', 'Regular', data)
   fontManager.setCJKFallbackFamily('Noto Sans SC')
   return true
 }

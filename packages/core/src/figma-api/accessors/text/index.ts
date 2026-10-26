@@ -1,5 +1,4 @@
 import type {
-  CharacterStyleOverride,
   HyperlinkTarget,
   SceneNode,
   TextCase,
@@ -13,12 +12,13 @@ import {
   type NodeProxyInternals,
   type ProxyThis
 } from '#core/figma-api/accessor-utils'
-import { styleNameToWeight, type FigmaFontName } from '#core/figma-api/fonts'
+import type { FigmaFontNameInput } from '#core/figma-api/fonts'
 import {
   getParagraphSpacing,
   letterSpacingValue,
   lineHeightValue,
   paragraphStylesForCharacters,
+  styleRunsForCharacters,
   spacingProblem,
   type FigmaLetterSpacing,
   type FigmaLineHeight
@@ -27,6 +27,7 @@ import { getTextStyle, type TextSegmentField } from '#core/figma-api/text/style'
 import { styleRunsWithPatch, textStyleChanges } from '#core/text/character-style'
 
 import { hyperlinkTarget } from './hyperlink'
+import { fontNameStyle } from './ranges'
 
 /**
  * Getter/setter pair for a spacing Figma keeps at zero or more. It reads `mixed` while paragraphs
@@ -55,8 +56,7 @@ function characterStyle<T>(
   internals: NodeProxyInternals,
   field: TextSegmentField,
   mixed: symbol,
-  changes: (node: SceneNode, value: T) => Partial<SceneNode>,
-  sized?: (value: T) => ((fontSize: number) => CharacterStyleOverride) | undefined
+  changes: (node: SceneNode, value: T) => Partial<SceneNode>
 ) {
   return {
     get(this: ProxyThis): unknown {
@@ -64,16 +64,9 @@ function characterStyle<T>(
     },
     set(this: ProxyThis, value: T) {
       const node = raw(this, internals)
-      updateNode(this, internals, textStyleChanges(node, changes(node, value), sized?.(value)))
+      updateNode(this, internals, textStyleChanges(node, changes(node, value)))
     }
   }
-}
-
-/** A length given in percent of the font size, which characters of each size resolve. */
-function percentOf(value: unknown): number | null {
-  if (!value || typeof value !== 'object') return null
-  const length = value as { unit?: unknown; value?: unknown }
-  return length.unit === 'PERCENT' && typeof length.value === 'number' ? length.value / 100 : null
 }
 
 /** Getter/setter pair for a text property stored verbatim on the node. */
@@ -100,13 +93,13 @@ export function installTextNodeProxyAccessors(
       },
       set(this: ProxyThis, value: string) {
         const textParagraphs = paragraphStylesForCharacters(raw(this, internals), value)
-        updateNode(this, internals, { text: value, textParagraphs })
+        const styleRuns = styleRunsForCharacters(raw(this, internals), value)
+        updateNode(this, internals, { text: value, textParagraphs, styleRuns })
       }
     },
-    fontName: characterStyle<FigmaFontName>(internals, 'fontName', mixed, (_node, value) => {
-      const { weight, italic } = styleNameToWeight(value.style)
-      return { fontFamily: value.family, fontWeight: weight, italic }
-    }),
+    fontName: characterStyle<FigmaFontNameInput>(internals, 'fontName', mixed, (node, value) =>
+      fontNameStyle('set_fontName', node, 0, value)
+    ),
     fontSize: characterStyle<number>(internals, 'fontSize', mixed, (_node, fontSize) => ({
       fontSize
     })),
@@ -125,21 +118,13 @@ export function installTextNodeProxyAccessors(
       internals,
       'letterSpacing',
       mixed,
-      (node, value) => ({ letterSpacing: letterSpacingValue(node, value) }),
-      (value) => {
-        const percent = percentOf(value)
-        return percent === null ? undefined : (fontSize) => ({ letterSpacing: percent * fontSize })
-      }
+      (_node, value) => ({ letterSpacing: letterSpacingValue(value) })
     ),
     lineHeight: characterStyle<FigmaLineHeight | number | null>(
       internals,
       'lineHeight',
       mixed,
-      (node, value) => ({ lineHeight: lineHeightValue(node, value) }),
-      (value) => {
-        const percent = percentOf(value)
-        return percent === null ? undefined : (fontSize) => ({ lineHeight: percent * fontSize })
-      }
+      (_node, value) => ({ lineHeight: lineHeightValue(value) })
     ),
     textCase: characterStyle<TextCase>(internals, 'textCase', mixed, (_node, textCase) => ({
       textCase

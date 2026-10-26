@@ -4,6 +4,7 @@ import { expectDefined } from '#core-tests/helpers/assert'
 import type { CanvasKit, TypefaceFontProvider } from 'canvaskit-wasm'
 
 import { SceneGraph, type SceneNode, type StyleRun } from '@open-pencil/scene-graph'
+import { pixelLength } from '@open-pencil/scene-graph/text'
 
 import type { TextLayout } from '#core/canvas/text/layout'
 import { buildParagraph } from '#core/canvas/text/layout/build'
@@ -92,11 +93,11 @@ describe('lines of mixed sizes', () => {
     provider = ck.TypefaceFontProvider.Make()
     fontManager.attachProvider(ck, provider)
     const inter = expectDefined(
-      await fontManager.fetchBundledFont('/Inter-Regular.ttf'),
+      await fontManager.fetchBundledFont('/InterVariable.ttf'),
       'bundled Inter font'
     )
     provider.registerFont(inter, 'Inter')
-    fontManager.markLoaded('Inter', 'Regular', inter)
+    await fontManager.markLoaded('Inter', 'Regular', inter)
   })
 
   afterAll(() => {
@@ -121,7 +122,10 @@ describe('lines of mixed sizes', () => {
   })
 
   test('gives a line the tallest line height on it, wrapped lines too', () => {
-    const fixed = layOut({ text: 'one\ntwo\nthree', styleRuns: [run(4, 3, { lineHeight: 50 })] })
+    const fixed = layOut({
+      text: 'one\ntwo\nthree',
+      styleRuns: [run(4, 3, { lineHeight: pixelLength(50) })]
+    })
     expectBaselines(fixed, [23.227, 73.227, 102.227])
     expect(Math.ceil(fixed.getHeight())).toBe(108)
 
@@ -152,7 +156,7 @@ describe('lines of mixed sizes', () => {
   test('centres the tallest font of a line in its line height', () => {
     const layout = layOut({
       text: 'Small LARGE\nsecond',
-      lineHeight: 30,
+      lineHeight: pixelLength(30),
       styleRuns: [run(6, 5, { fontSize: 40 })]
     })
     expectBaselines(layout, [29.545, 59.545])
