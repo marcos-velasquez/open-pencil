@@ -267,19 +267,16 @@ function recordPaintBindingClaims(
     const paint: Paint | undefined = paints[index]
     const alias = paint?.colorVar?.value?.alias
     const bound = Boolean(alias)
+    // The claim's own binding, so it returns once an outer claim that won is removed.
+    let own: string | null = null
+    if (alias?.guid) own = guidToString(alias.guid)
+    else if (bound) own = target.boundVariables[key] ?? null
     // The layer took the component's binding with its other fields; a winning literal colour drops it.
     if (wins && !bound && key in target.boundVariables) {
       const { [key]: _dropped, ...kept } = target.boundVariables
       target.boundVariables = kept
     }
-    setInstanceOverride(
-      owner.instanceOverrides,
-      owner.id,
-      target.id,
-      `boundVariables/${key}`,
-      // The claim's own binding, so it returns once an outer claim that won is removed.
-      alias?.guid ? guidToString(alias.guid) : bound ? (target.boundVariables[key] ?? null) : null
-    )
+    setInstanceOverride(owner.instanceOverrides, owner.id, target.id, `boundVariables/${key}`, own)
   }
   if (claimed.length > 0)
     setInstanceOverride(owner.instanceOverrides, owner.id, target.id, 'boundVariables')
