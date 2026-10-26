@@ -1,8 +1,9 @@
 import * as v from 'valibot'
 
-import type { Variable, VariableCollection } from '@open-pencil/scene-graph'
+import type { SceneNode, Variable, VariableCollection } from '@open-pencil/scene-graph'
 
-import type { SerializedComponentLibraryRevision, SerializedLibraryNode } from './serialization'
+import { decodeStoredLibraryValue } from './serialization'
+import type { SerializedComponentLibraryRevision } from './serialization'
 import { COMPONENT_LIBRARY_SCHEMA_VERSION } from './types'
 import type { LibrarySummary, StoredLibraryLatestManifest } from './types'
 
@@ -32,9 +33,7 @@ const serializedCollectionShapeSchema = v.looseObject({
  * the fields deserialization and integrity validation dereference; the remaining fields pass
  * through, since a full SceneNode schema would duplicate the Scene Graph types.
  */
-const serializedNodeSchema = v.custom<SerializedLibraryNode>((value) =>
-  v.is(serializedNodeShapeSchema, value)
-)
+const serializedNodeSchema = v.custom<SceneNode>((value) => v.is(serializedNodeShapeSchema, value))
 const serializedVariableSchema = v.custom<Variable>((value) =>
   v.is(serializedVariableShapeSchema, value)
 )
@@ -42,19 +41,7 @@ const serializedCollectionSchema = v.custom<VariableCollection>((value) =>
   v.is(serializedCollectionShapeSchema, value)
 )
 
-/** Image bytes: a Uint8Array, or the index-keyed object `JSON.stringify` writes for one. */
-const serializedBytesSchema = v.union([
-  v.instance(Uint8Array),
-  v.pipe(
-    v.record(v.string(), v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(255))),
-    // A gap or a stray key would silently shift the bytes; asset hashes do not cover images.
-    v.check(
-      (bytes) => Object.keys(bytes).every((key, index) => key === String(index)),
-      'Expected byte indexes 0 to length - 1'
-    ),
-    v.transform((bytes) => Uint8Array.from(Object.values(bytes)))
-  )
-])
+const serializedBytesSchema = v.instance(Uint8Array)
 
 const libraryAssetDescriptorSchema = v.object({
   key: v.string(),
@@ -87,6 +74,13 @@ export const serializedLibraryRevisionSchema = v.object({
     documentColorSpace: v.picklist(['srgb', 'display-p3'])
   })
 }) satisfies v.GenericSchema<unknown, SerializedComponentLibraryRevision>
+
+/** A revision as a catalog reads it back from JSON, decoded from `encodeStoredLibraryRevision`. */
+export const storedLibraryRevisionSchema = v.pipe(
+  v.unknown(),
+  v.transform(decodeStoredLibraryValue),
+  serializedLibraryRevisionSchema
+)
 
 export const librarySummarySchema = v.object({
   libraryId: v.string(),

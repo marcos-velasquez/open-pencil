@@ -1,11 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
+import * as v from 'valibot'
+
 import {
   createLibraryRevision,
   deserializeLibraryRevision,
-  extractLibrarySnapshot,
+  encodeStoredLibraryRevision,
   materializeLibraryAsset,
-  serializeLibraryRevision
+  storedLibraryRevisionSchema
 } from '@open-pencil/core/library'
 import { SceneGraph } from '@open-pencil/scene-graph'
 import { recordInstanceOverride } from '@open-pencil/scene-graph/instances'
@@ -41,47 +43,16 @@ describe('instance overrides in library revisions', () => {
     const { graph } = libraryWithOverride(0.5)
     const revision = await revisionOf(graph)
     // A catalog that stores revisions as JSON, as files and remote storage do.
-    // eslint-disable-next-line unicorn/prefer-structured-clone -- exercise the JSON boundary
-    const stored = JSON.parse(JSON.stringify(serializeLibraryRevision(revision)))
+    const stored = v.parse(
+      v.pipe(v.string(), v.parseJson(), storedLibraryRevisionSchema),
+      JSON.stringify(encodeStoredLibraryRevision(revision))
+    )
     const restored = deserializeLibraryRevision(stored).graph
     const button = [...restored.getAllNodes()].find((node) => node.componentKey === 'button')
     const { nested, glyph } = nestedIcon(restored, button?.id ?? '')
 
     expect([...nested.instanceOverrides.descendants.keys()]).toEqual([glyph.id])
     expect(nested.instanceOverrides.descendants.get(glyph.id)?.has('opacity')).toBe(true)
-  })
-
-  test('reads revisions stored before overrides were serialized', () => {
-    const { graph, button } = libraryWithOverride(0.5)
-    const snapshot = extractLibrarySnapshot(graph, [button.id]).graph
-    const legacy = {
-      manifest: {
-        schemaVersion: 1,
-        libraryId: 'design-system',
-        name: 'Design system',
-        revisionId: 'legacy',
-        previousRevisionId: null,
-        publishedAt: '2026-01-01T00:00:00.000Z',
-        description: '',
-        assets: []
-      },
-      graph: {
-        rootId: snapshot.rootId,
-        // Stored as it was: JSON writes each override `Map` as an empty object.
-        nodes: [...snapshot.nodes],
-        images: [],
-        variables: [],
-        variableCollections: [],
-        activeMode: [],
-        documentColorSpace: 'srgb'
-      }
-    }
-    // eslint-disable-next-line unicorn/prefer-structured-clone -- exercise the JSON boundary
-    const restored = deserializeLibraryRevision(JSON.parse(JSON.stringify(legacy))).graph
-    for (const node of restored.getAllNodes()) {
-      expect(node.instanceOverrides.self).toBeInstanceOf(Map)
-      expect(node.instanceOverrides.descendants).toBeInstanceOf(Map)
-    }
   })
 
   test('keeps them under the IDs of the materialized layers', async () => {

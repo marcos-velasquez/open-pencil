@@ -1,36 +1,18 @@
+import { mapValues } from 'es-toolkit'
+import { fromUint8Array, isValid, toUint8Array } from 'js-base64'
+
 import { SceneGraph } from '@open-pencil/scene-graph'
 import type { SceneNode } from '@open-pencil/scene-graph'
-import {
-  cloneInstanceOverrideState,
-  deserializeInstanceOverrideState,
-  serializeInstanceOverrideState,
-  type InstanceOverrideState,
-  type SerializedInstanceOverrideState
-} from '@open-pencil/scene-graph/instances/overrides'
 
 import type { PortableSceneGraphData } from '#core/kiwi/fig/parse/portable-data'
 
 import type { ComponentLibraryManifest, ComponentLibraryRevision } from './types'
 
-/** A node as a catalog stores it: its instance overrides as arrays, which JSON keeps. */
-export type SerializedLibraryNode = Omit<SceneNode, 'instanceOverrides'> & {
-  instanceOverrides: SerializedInstanceOverrideState
-}
-
-export type SerializedLibraryGraph = Omit<PortableSceneGraphData, 'nodes'> & {
-  nodes: Array<[string, SerializedLibraryNode]>
-}
+export type SerializedLibraryGraph = PortableSceneGraphData
 
 export interface SerializedComponentLibraryRevision {
   manifest: ComponentLibraryManifest
   graph: SerializedLibraryGraph
-}
-
-function serializeLibraryNode(node: SceneNode): SerializedLibraryNode {
-  return {
-    ...structuredClone(node),
-    instanceOverrides: serializeInstanceOverrideState(node.instanceOverrides)
-  }
 }
 
 export function serializeLibraryRevision(
@@ -40,7 +22,7 @@ export function serializeLibraryRevision(
     manifest: structuredClone(revision.manifest),
     graph: {
       rootId: revision.graph.rootId,
-      nodes: [...revision.graph.nodes].map(([id, node]) => [id, serializeLibraryNode(node)]),
+      nodes: [...revision.graph.nodes].map(([id, node]) => [id, structuredClone(node)]),
       images: [...revision.graph.images].map(([hash, bytes]) => [hash, new Uint8Array(bytes)]),
       variables: [...revision.graph.variables].map(([id, variable]) => [
         id,
@@ -56,26 +38,66 @@ export function serializeLibraryRevision(
   }
 }
 
-function isInstanceOverrideState(state: unknown): state is InstanceOverrideState {
-  return !!state && typeof state === 'object' && 'self' in state && state.self instanceof Map
+const MAP_TAG = 'openpencil/map'
+const OBJECT_TAG = 'openpencil/object'
+
+function encodeStoredValue(value: unknown): unknown {
+  if (value instanceof Map) {
+    return {
+      $openPencilType: MAP_TAG,
+      entries: [...value].map(([key, entry]) => [encodeStoredValue(key), encodeStoredValue(entry)])
+    }
+  }
+  if (value instanceof Uint8Array) return { $bytes: fromUint8Array(value) }
+  if (Array.isArray(value)) return value.map(encodeStoredValue)
+  if (value && typeof value === 'object') {
+    const encoded = mapValues(value, encodeStoredValue)
+    // An object that already looks like a tag is wrapped, so decoding cannot mistake it for one.
+    return '$openPencilType' in value ? { $openPencilType: OBJECT_TAG, value: encoded } : encoded
+  }
+  return value
 }
 
 /**
- * The override state of a stored node. A revision stored before overrides were serialized keeps
- * them as `Map`s when it was structured-cloned, and as `{}` once it went through JSON.
+ * A revision as a catalog writes it to JSON: the serialized revision with its `Map`s (instance
+ * overrides) and byte arrays (images, geometry) tagged, since JSON keeps neither.
  */
-function restoreInstanceOverrides(state: unknown): InstanceOverrideState {
-  return isInstanceOverrideState(state)
-    ? cloneInstanceOverrideState(state)
-    : deserializeInstanceOverrideState(state)
+export function encodeStoredLibraryRevision(revision: ComponentLibraryRevision): unknown {
+  return encodeStoredValue(serializeLibraryRevision(revision))
 }
 
-function cloneLibraryNode(node: SerializedLibraryNode): SceneNode {
-  const { instanceOverrides, ...fields } = structuredClone(node)
-  const cloned: SceneNode = {
-    ...fields,
-    instanceOverrides: restoreInstanceOverrides(instanceOverrides)
+/** Reverses `encodeStoredLibraryRevision` on parsed JSON; the result still needs validating. */
+export function decodeStoredLibraryValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(decodeStoredLibraryValue)
+  if (!value || typeof value !== 'object') return value
+  if ('$openPencilType' in value) {
+    if (
+      value.$openPencilType === OBJECT_TAG &&
+      'value' in value &&
+      value.value &&
+      typeof value.value === 'object' &&
+      !Array.isArray(value.value)
+    ) {
+      return mapValues(value.value, decodeStoredLibraryValue)
+    }
+    if (value.$openPencilType === MAP_TAG && 'entries' in value && Array.isArray(value.entries)) {
+      return new Map(
+        value.entries.flatMap((entry) =>
+          Array.isArray(entry) && entry.length === 2
+            ? [[decodeStoredLibraryValue(entry[0]), decodeStoredLibraryValue(entry[1])] as const]
+            : []
+        )
+      )
+    }
   }
+  if ('$bytes' in value && typeof value.$bytes === 'string' && isValid(value.$bytes)) {
+    return toUint8Array(value.$bytes)
+  }
+  return mapValues(value, decodeStoredLibraryValue)
+}
+
+function cloneLibraryNode(node: SceneNode): SceneNode {
+  const cloned = structuredClone(node)
   return Array.isArray(cloned.guides) ? cloned : { ...cloned, guides: [] }
 }
 
