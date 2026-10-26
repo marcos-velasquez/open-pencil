@@ -19,7 +19,7 @@ function libraryWithIconProperty() {
   const icon = graph.createInstance(star.id, button.id)
   if (!icon) throw new Error('Expected the icon instance')
   graph.updateNode(icon.id, {
-    componentPropertyReferences: [{ propertyId: 'icon', field: 'mainComponent' }]
+    componentPropertyReferences: [{ propertyId: 'icon', field: 'INSTANCE_SWAP' }]
   })
   const card = graph.createNode('COMPONENT', page.id, { name: 'Card', componentKey: 'card' })
   const cardButton = graph.createInstance(button.id, card.id)
