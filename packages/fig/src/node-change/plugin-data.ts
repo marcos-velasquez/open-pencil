@@ -1,4 +1,4 @@
-import { omit, omitBy } from 'es-toolkit/object'
+import { omit } from 'es-toolkit/object'
 
 import type { NodeChange, PluginData, PluginRelaunchData } from '@open-pencil/kiwi/fig/codec'
 import { guidToString } from '@open-pencil/kiwi/fig/guid'
@@ -96,12 +96,15 @@ export function extractBoundVariables(nc: NodeChange): Record<string, string> {
   let bindings = readNodeChangePluginData(nc, boundVariables) ?? {}
   // Each paint carries its colour's alias. An instance's copy pairs its component's plugin data
   // with paints an override set, so the plugin data can name a binding those paints dropped.
-  bindings = omitBy(bindings, (_id, field) => {
+  const decidedByPaints = (field: string) => {
     const key = PAINT_BINDING.exec(field)?.[1]
     return key === 'fills'
       ? nc.fillPaints !== undefined
       : key === 'strokes' && nc.strokePaints !== undefined
-  })
+  }
+  bindings = Object.fromEntries(
+    Object.entries(bindings).filter(([field]) => !decidedByPaints(field))
+  )
   for (const entry of variableConsumptionEntries(nc)) {
     const binding = resolveVariableConsumptionEntry(entry)
     if (binding) bindings[binding.field] = binding.variableId
