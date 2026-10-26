@@ -1,7 +1,7 @@
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import { cloneNodeProps } from '@open-pencil/scene-graph/copy'
 
-import { remapCopiedInstanceOverrides } from './copied-overrides'
+import { remapCopiedReferences } from './copied-references'
 import { findLibraryDefinition } from './definitions'
 import { assertLibraryAssetKey, assertLibraryId, libraryAssetIdentityKey } from './identity'
 import type { ComponentLibraryRevision, LibraryAssetDescriptor } from './types'
@@ -77,11 +77,10 @@ function markDefinitions(
   const descriptorsBySourceId = new Map(
     revision.manifest.assets.map((asset) => [asset.sourceNodeId, asset])
   )
+  remapCopiedReferences(graph, mappedIds)
   for (const [sourceId, targetId] of mappedIds) {
     const target = graph.getNode(targetId)
     if (!target) continue
-    const componentId = target.componentId ? mappedIds.get(target.componentId) : undefined
-    remapCopiedInstanceOverrides(graph, targetId, mappedIds)
     const descriptor = descriptorsBySourceId.get(sourceId)
     const source = revision.graph.getNode(sourceId)
     const sourceAssetKey =
@@ -90,7 +89,6 @@ function markDefinitions(
         ? (source.componentKey ?? source.sourceLibraryKey ?? source.publishId)
         : null)
     graph.updateNode(targetId, {
-      componentId: componentId ?? target.componentId,
       locked: true,
       librarySource: sourceAssetKey
         ? {
