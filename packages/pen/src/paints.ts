@@ -200,7 +200,7 @@ export interface PenStrokeFields {
   join: string | undefined
 }
 
-export function isLegacyStroke(stroke: PenNode['stroke']): stroke is PenLegacyStroke {
+function isLegacyStroke(stroke: PenNode['stroke']): stroke is PenLegacyStroke {
   return typeof stroke === 'object' && !Array.isArray(stroke) && 'thickness' in stroke
 }
 

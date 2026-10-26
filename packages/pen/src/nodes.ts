@@ -6,7 +6,7 @@ import type {
   SceneGraph,
   SceneNode
 } from '@open-pencil/scene-graph'
-import { CORNER_FIELDS, STROKE_FIELDS } from '@open-pencil/scene-graph/fields'
+import { CORNER_FIELDS } from '@open-pencil/scene-graph/fields'
 import { fillSizingFields } from '@open-pencil/scene-graph/layout'
 import type { Color } from '@open-pencil/scene-graph/primitives'
 
@@ -22,7 +22,7 @@ import {
   mapLayoutMode,
   parseSize
 } from './layout'
-import { applyStroke, convertPaints, isLegacyStroke, strokeFields } from './paints'
+import { applyStroke, convertPaints, strokeFields } from './paints'
 import { isPlain, type PenPlacement } from './placement'
 import type { NodeFields, PenNode, PenOverride } from './schema'
 import { applyTextProps } from './text'
@@ -134,13 +134,16 @@ function applyAutoLayout(
 
 const PLACEMENT_FIELDS = ['x', 'y', 'rotation', 'flipX', 'flipY'] as const
 
-const STROKE_WEIGHT_FIELDS = [
-  'strokeWeight',
+/** What `applyStroke` writes: a stroke's weight and alignment are its paints'. */
+const STROKE_WRITES = [
+  'strokes',
   'independentStrokeWeights',
   'borderTopWeight',
   'borderRightWeight',
   'borderBottomWeight',
-  'borderLeftWeight'
+  'borderLeftWeight',
+  'strokeCap',
+  'strokeJoin'
 ] as const
 
 /**
@@ -164,11 +167,11 @@ const PROPERTY_FIELDS = {
   layoutPosition: ['layoutPositioning'],
   rotation: PLACEMENT_FIELDS,
   fill: ['fills'],
-  stroke: ['strokes'],
-  strokeWidth: STROKE_WEIGHT_FIELDS,
-  strokeLinecap: ['strokeCap'],
-  strokeLinejoin: ['strokeJoin'],
-  strokeAlignment: ['strokeAlign'],
+  stroke: STROKE_WRITES,
+  strokeWidth: STROKE_WRITES,
+  strokeLinecap: ['strokes', 'strokeCap'],
+  strokeLinejoin: ['strokes', 'strokeJoin'],
+  strokeAlignment: ['strokes'],
   effect: ['effects'],
   cornerRadius: CORNER_FIELDS,
   layout: ['layoutMode'],
@@ -216,11 +219,7 @@ const isProperty = (key: string): key is keyof typeof PROPERTY_FIELDS => key in 
  * not reach it.
  */
 export function fieldsSetBy(pen: PenOverride): (keyof SceneNode)[] {
-  return Object.keys(pen).flatMap((key) => {
-    if (key === 'stroke' && isLegacyStroke(pen.stroke))
-      return ['strokes' as const, ...STROKE_FIELDS]
-    return isProperty(key) ? PROPERTY_FIELDS[key] : []
-  })
+  return Object.keys(pen).flatMap((key) => (isProperty(key) ? PROPERTY_FIELDS[key] : []))
 }
 
 /**

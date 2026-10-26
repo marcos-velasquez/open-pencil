@@ -101,6 +101,20 @@ describe('parsePenFile — instances', () => {
     expect(getNodeOrThrow(graph, 'tinted').fills[0]?.color).toMatchObject({ r: 0x11 / 255 })
   })
 
+  test('records the fields a stroke writes, not the ones it leaves to its paints', () => {
+    const graph = parseDocument([
+      button,
+      { id: 'outlined', type: 'ref', ref: 'button', stroke: { fill: '#111111', thickness: 2 } }
+    ])
+    const recorded = (field: string) => hasInstanceOverride(graph, 'outlined', field)
+    expect(['strokes', 'strokeCap', 'strokeJoin'].map(recorded)).toEqual([true, true, true])
+    expect(['strokeWeight', 'strokeAlign', 'dashPattern'].map(recorded)).toEqual([
+      false,
+      false,
+      false
+    ])
+  })
+
   test("keeps a field the ref sets to its component's value when the component changes", () => {
     const graph = parseDocument([
       button,
