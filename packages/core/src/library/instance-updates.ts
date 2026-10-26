@@ -143,6 +143,12 @@ interface CapturedOverride {
   componentId?: string
   fields: Partial<Record<string, unknown>>
   bindings: [field: string, value: unknown][]
+  /** The scale each bound field reads its variable at, `undefined` for none; it goes with the binding. */
+  scales: Map<string, number | undefined>
+}
+
+function captureScales(entry: CapturedOverride, target: SceneNode, fields: Iterable<string>): void {
+  for (const field of fields) entry.scales.set(field, target.variableBindingScales[field])
 }
 
 /** The overrides the instance `rootId` and the instances in it carry, by the place of each layer. */
@@ -163,14 +169,22 @@ function captureOverrides(graph: SceneGraph, rootId: string): CapturedOverride[]
       const entry: CapturedOverride = {
         path: layerPath(graph, rootId, target),
         fields: {},
-        bindings: []
+        bindings: [],
+        scales: new Map()
       }
       for (const [field, value] of overridden) {
         if (field === 'sourceComponentId') continue
         if (field === 'componentId' && typeof value === 'string') entry.componentId = value
-        else if (field.startsWith('boundVariables/')) entry.bindings.push([field, value])
-        else if (field in target)
+        else if (field.startsWith('boundVariables/')) {
+          entry.bindings.push([field, value])
+          captureScales(entry, target, [field.slice('boundVariables/'.length)])
+        } else if (field in target)
           entry.fields[field] = structuredClone(target[field as keyof SceneNode])
+        if (field === 'boundVariables')
+          captureScales(entry, target, [
+            ...Object.keys(target.boundVariables),
+            ...Object.keys(target.variableBindingScales)
+          ])
       }
       captured.push(entry)
     }
@@ -212,7 +226,15 @@ export function swapLibraryInstance(
   for (const entry of captured) {
     const target = layers.get(entry.path)
     if (!target) continue
-    graph.updateNode(target.id, entry.fields as Partial<SceneNode>)
+    const scales = { ...target.variableBindingScales }
+    for (const [field, scale] of entry.scales) {
+      if (scale === undefined) Reflect.deleteProperty(scales, field)
+      else scales[field] = scale
+    }
+    graph.updateNode(target.id, {
+      ...entry.fields,
+      ...(entry.scales.size > 0 && { variableBindingScales: scales })
+    } as Partial<SceneNode>)
     recordInstanceOverride(graph, target.id, Object.keys(entry.fields))
     const owner = findInstanceAncestor(graph, target.id)
     if (!owner) continue
