@@ -1,8 +1,8 @@
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { cloneNodeProps } from '@open-pencil/scene-graph/copy'
-import { remapInstanceOverrideState } from '@open-pencil/scene-graph/instances/overrides'
 import { contentPluginData } from '@open-pencil/scene-graph/plugin-data'
 
+import { remapCopiedInstanceOverrides } from './copied-overrides'
 import { contentHash } from './hash'
 import { assertLibraryAssetKey } from './identity'
 import type { LibraryAssetDescriptor, PortableLibrarySnapshot } from './types'
@@ -62,8 +62,6 @@ function addSnapshotNode(
 }
 
 function remapSnapshotReferences(graph: SceneGraph, mappedIds: Map<string, string>): void {
-  // The snapshot keeps the source's variables' IDs; only its nodes are copied under new ones.
-  const references = { node: (id: string) => mappedIds.get(id) ?? id, variable: (id: string) => id }
   for (const [sourceId, targetId] of mappedIds) {
     const sourceTarget = graph.getNode(targetId)
     if (!sourceTarget) continue
@@ -71,13 +69,7 @@ function remapSnapshotReferences(graph: SceneGraph, mappedIds: Map<string, strin
     if (componentId && mappedIds.has(componentId)) {
       graph.updateNode(targetId, { componentId: mappedIds.get(componentId) ?? null })
     }
-    // An instance's overrides name its layers, and swaps their components, by source ID.
-    const overrides = sourceTarget.instanceOverrides
-    if (overrides.self.size > 0 || overrides.descendants.size > 0) {
-      graph.updateNode(targetId, {
-        instanceOverrides: remapInstanceOverrideState(overrides, references)
-      })
-    }
+    remapCopiedInstanceOverrides(graph, targetId, mappedIds)
     if (sourceId === targetId) throw new Error('Snapshot IDs must be remapped')
   }
 }
