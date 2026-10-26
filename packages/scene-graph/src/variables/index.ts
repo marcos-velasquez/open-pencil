@@ -4,7 +4,7 @@ import { omit, omitBy } from 'es-toolkit/object'
 import { BLACK } from '../constants'
 import type { SceneGraph } from '../graph'
 import { findInstanceAncestor } from '../instances'
-import { setInstanceOverride } from '../instances/overrides'
+import { bindingOverrideField, setInstanceOverride } from '../instances/overrides'
 import type {
   Variable,
   VariableCollection,
@@ -331,7 +331,7 @@ function markBoundVariablesOverrideOnInstance(
       owner.instanceOverrides,
       owner.id,
       nodeId,
-      `boundVariables/${field}`,
+      bindingOverrideField(field),
       node.boundVariables[field] ?? null
     )
 }

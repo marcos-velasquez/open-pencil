@@ -6,7 +6,10 @@ import {
 import { compact } from 'es-toolkit'
 
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
-import { forEachInstanceOverride } from '@open-pencil/scene-graph/instances/overrides'
+import {
+  forEachInstanceOverride,
+  overriddenBindingField
+} from '@open-pencil/scene-graph/instances/overrides'
 import type { GUID, Vector } from '@open-pencil/scene-graph/primitives'
 import { scaleNodeChanges } from '@open-pencil/scene-graph/scaling'
 import { ownsSlotContent } from '@open-pencil/scene-graph/slots'
@@ -174,9 +177,8 @@ function paintBindingOverride(
 /** A binding override is a paint claim for paint colours and a consumption entry otherwise. */
 function bindingClaim(
   { context, instance, target }: ClaimInput,
-  field: string
+  bindingField: string
 ): Omit<KiwiSymbolOverridePayload, 'guidPath'> | undefined {
-  const bindingField = field.slice('boundVariables/'.length)
   const paints = paintBindingOverride(context, target, bindingField)
   if (paints) return paints
   const entry = overrideVariableBindingEntry(
@@ -210,9 +212,9 @@ function overrideClaim(
   const input: ClaimInput = { ...claimed, target, nodeFields }
   if (field === 'componentId')
     return exportedSwapOverride(input.context, input.target, path, counter)
-  const claim = field.startsWith('boundVariables/')
-    ? bindingClaim(input, field)
-    : registryClaim(field as keyof SceneNode, input)
+  const binding = overriddenBindingField(field)
+  const claim =
+    binding === null ? registryClaim(field as keyof SceneNode, input) : bindingClaim(input, binding)
   return claim && { guidPath: { guids: path }, ...claim }
 }
 
