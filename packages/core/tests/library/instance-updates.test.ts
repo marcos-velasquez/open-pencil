@@ -174,4 +174,19 @@ describe('updating a library instance to another revision', () => {
     expect(layer(graph, instance, 'Note', 0).text).toBe('Note')
     expect(layer(graph, instance, 'Note', 1).text).toBe('Second')
   })
+
+  test('tells apart a layer whose name looks like a path from the layer it seems to name', async () => {
+    // Read as text, the name would be the path of the icon's glyph.
+    const tricky = 'Icon#0/Glyph'
+    const { graph, instance } = await updated(
+      { width: 80, label: 'Old', extras: [tricky] },
+      { width: 120, label: 'New', extras: [tricky] },
+      (graph, id) => {
+        const named = layer(graph, id, tricky)
+        graph.updateNode(named.id, { text: 'Kept' })
+        recordInstanceOverride(graph, named.id, ['text'])
+      }
+    )
+    expect(layer(graph, instance, tricky).text).toBe('Kept')
+  })
 })
