@@ -76,7 +76,11 @@ function revisionDefinitionRoot(
   return root
 }
 
-const layerKey = (node: SceneNode) => `${node.type}:${node.name}`
+/** What pairs a layer across revisions: a variant's key, which a rename keeps, or its kind and name. */
+const layerKey = (node: SceneNode) =>
+  node.type === 'COMPONENT' && node.componentKey
+    ? `COMPONENT#${node.componentKey}`
+    : `${node.type}:${node.name}`
 
 /** The component the nearest instance above a layer draws, which the layer's copy points into. */
 function enclosingComponent(graph: SceneGraph, node: SceneNode): string | null {
@@ -110,8 +114,9 @@ function copyTree(
 
 /**
  * Pairs the layers of `target` with those of the revision layer `source` of the same kind and
- * name, in order, as a library update finds the layer an override names. A revision layer left
- * without a pair is copied in; the layers left without one are returned for removal.
+ * name, in order, as a library update finds the layer an override names; a variant pairs by its
+ * key, and the variants left over pair in order. A revision layer left without a pair is copied
+ * in; the layers left without one are returned for removal.
  */
 function pairLayers(
   graph: SceneGraph,
@@ -125,12 +130,27 @@ function pairLayers(
   pairs.push({ source, target, tree })
   const unpaired = groupBy(graph.getChildren(target.id), layerKey)
   const removed: string[] = []
+  const unmatched: SceneNode[] = []
   for (const child of revision.graph.getChildren(source.id)) {
     const pair = unpaired[layerKey(child)]?.shift()
     if (pair) removed.push(...pairLayers(graph, revision, child, pair, tree, pairs))
-    else copyTree(graph, revision, child.id, target.id, tree, pairs)
+    else unmatched.push(child)
   }
-  for (const layers of Object.values(unpaired)) removed.push(...layers.map((layer) => layer.id))
+  // A variant renamed without a key is still the component its instances draw: the variants
+  // left on both sides pair in order.
+  const left = new Set(Object.values(unpaired).flat())
+  const variants = graph
+    .getChildren(target.id)
+    .filter((layer) => layer.type === 'COMPONENT' && left.has(layer))
+  const renamed = new Set<SceneNode>()
+  for (const child of unmatched) {
+    const pair = child.type === 'COMPONENT' ? variants.shift() : undefined
+    if (pair) {
+      renamed.add(pair)
+      removed.push(...pairLayers(graph, revision, child, pair, tree, pairs))
+    } else copyTree(graph, revision, child.id, target.id, tree, pairs)
+  }
+  for (const layer of left) if (!renamed.has(layer)) removed.push(layer.id)
   return removed
 }
 
@@ -250,7 +270,11 @@ export function updateLibraryDefinitions(
       librarySource: libraryDefinitionSource(revision, source.id) ?? target.librarySource
     })
   }
-  for (const id of removed) graph.deleteNode(id)
+  for (const id of removed) {
+    // A variant the revision drops stays while instances draw it, as their component.
+    if (graph.getNode(id)?.type === 'COMPONENT' && graph.getInstances(id).length > 0) continue
+    graph.deleteNode(id)
+  }
   for (const { source, target, tree } of pairs) {
     source.childIds.forEach((childId, index) => {
       const child = tree.get(childId)

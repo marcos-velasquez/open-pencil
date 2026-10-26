@@ -203,6 +203,51 @@ describe('library definition updates', () => {
     expect(asset(inserted?.componentPropertyAssignments.icon)).toBe('heart')
   })
 
+  describe('variants', () => {
+    /** A library whose chip set has a variant for each state, none of them keyed. */
+    function chips(states: string[]) {
+      const graph = new SceneGraph()
+      const set = graph.createNode('COMPONENT_SET', graph.getPages()[0].id, {
+        name: 'Chip',
+        componentKey: 'chip'
+      })
+      for (const state of states) {
+        const variant = graph.createNode('COMPONENT', set.id, { name: `State=${state}` })
+        graph.createNode('TEXT', variant.id, { name: 'Label', text: state })
+      }
+      return { graph, set }
+    }
+
+    async function placed(states: string[], variant: string) {
+      const graph = new SceneGraph()
+      const { componentSetId } = materializeLibraryAsset(
+        graph,
+        await revisionOf(chips(states).graph),
+        'chip'
+      )
+      const component = layer(graph, componentSetId ?? '', `State=${variant}`)
+      const instance = graph.createInstance(component.id, graph.getPages()[0].id)
+      if (!instance) throw new Error('Expected the instance')
+      return { graph, instance: instance.id }
+    }
+
+    test('keeps the instances of a variant the revision renames', async () => {
+      const { graph, instance } = await placed(['Default', 'Hover'], 'Hover')
+      updateLibraryDefinitions(graph, await revisionOf(chips(['Default', 'Pressed']).graph))
+
+      const component = graph.getNode(graph.getNode(instance)?.componentId ?? '')
+      expect(component?.name).toBe('State=Pressed')
+      expect(layer(graph, instance, 'Label').text).toBe('Pressed')
+    })
+
+    test('keeps a variant the revision drops while an instance draws it', async () => {
+      const { graph, instance } = await placed(['Default', 'Hover'], 'Hover')
+      updateLibraryDefinitions(graph, await revisionOf(chips(['Default']).graph))
+
+      expect(graph.getNode(graph.getNode(instance)?.componentId ?? '')?.name).toBe('State=Hover')
+    })
+  })
+
   test('brings in the images a revision adds', async () => {
     const source = library()
     const doc = await document(source.graph)
