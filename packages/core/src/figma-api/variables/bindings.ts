@@ -135,6 +135,22 @@ function documentFields(field: FigmaBindableNodeField): readonly string[] {
   return field === 'cornerRadius' ? CORNER_FIELDS : [NODE_FIELDS[field]]
 }
 
+const isCornerField = (field: string): boolean =>
+  field === 'cornerRadius' || (CORNER_FIELDS as readonly string[]).includes(field)
+
+/**
+ * Binds a uniform radius corner by corner, as scripts bind it, when the document binds it as one
+ * field, as a .pen or .fig file does, so a script can change or unbind each corner.
+ */
+function splitUniformRadius(graph: SceneGraph, node: SceneNode): void {
+  const id = node.boundVariables.cornerRadius
+  if (!id) return
+  graph.unbindVariable(node.id, 'cornerRadius')
+  for (const corner of CORNER_FIELDS) {
+    if (!node.boundVariables[corner]) graph.bindVariable(node.id, corner, id)
+  }
+}
+
 /**
  * Binds or unbinds the document fields behind a Figma node field, then shows the variable's value
  * on the layer and lays out what it moves.
@@ -145,6 +161,7 @@ export function setLayerBinding(
   field: FigmaBindableNodeField,
   variable: Variable | null
 ): void {
+  if (isCornerField(field)) splitUniformRadius(graph, node)
   for (const name of documentFields(field)) {
     if (variable) graph.bindVariable(node.id, name, variable.id)
     else graph.unbindVariable(node.id, name)
@@ -240,6 +257,9 @@ export function figmaBoundVariables(node: SceneNode): FigmaBoundVariables {
     const name = FIGMA_FIELD_BY_DOCUMENT_FIELD.get(field)
     if (name) result[name] = variableAlias(id)
   }
+  // Figma lists a uniform radius by its corners; a file can bind it as one field.
+  const radius = node.boundVariables.cornerRadius
+  if (radius) for (const corner of CORNER_FIELDS) result[corner] ??= variableAlias(radius)
   if (node.type === 'TEXT') {
     for (const field of TEXT_BINDABLE_FIELDS) {
       const ids = uniq([

@@ -188,6 +188,22 @@ describe('node variable bindings', () => {
     rect.setBoundVariable('minWidth', null)
   })
 
+  test('shows and unbinds by corner a uniform radius a file binds as one field', () => {
+    const { api, size } = tokens()
+    const rect = api.createRectangle()
+    const corners = ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']
+    // A .pen or .fig file binds a uniform radius as one field.
+    api.graph.bindVariable(rect.id, 'cornerRadius', size.id)
+    expect(Object.keys(rect.boundVariables)).toEqual(corners)
+
+    rect.setBoundVariable('topLeftRadius', null)
+    expect(Object.keys(rect.boundVariables)).toEqual(corners.slice(1))
+    for (const corner of corners.slice(1)) rect.setBoundVariable(corner as 'topRightRadius', null)
+    rect.cornerRadius = 20
+    expect(api.graph.getNode(rect.id)?.boundVariables).toEqual({})
+    expect(rect.cornerRadius).toBe(20)
+  })
+
   test('setBoundVariable takes only the type Figma’s API allows for each field', () => {
     const { api, size, label, flag, color } = tokens()
     const rect = api.createRectangle()
