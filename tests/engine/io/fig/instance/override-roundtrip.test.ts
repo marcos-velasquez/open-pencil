@@ -90,4 +90,46 @@ describe('instance descendant fill override round trip', () => {
     expect(synced?.fills[0]).toMatchObject({ color: { r: 0, g: 0, b: 0, a: 0 }, opacity: 0 })
     expect(synced?.boundVariables['fills/0/color']).toBeUndefined()
   })
+
+  test('a variable an outer instance binds over a nested literal fill stays after reload', async () => {
+    await initCodec()
+
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const collection = graph.createCollection('Tokens')
+    const accent = graph.createVariable('accent-soft', 'COLOR', collection.id, {
+      r: 0.84,
+      g: 0.93,
+      b: 0.91,
+      a: 1
+    })
+    const solid = (color: Color) => [{ type: 'SOLID' as const, color, opacity: 1, visible: true }]
+    const button = graph.createNode('COMPONENT', page.id, {
+      name: 'Button',
+      width: 80,
+      height: 30,
+      fills: solid({ r: 0.13, g: 0.33, b: 0.8, a: 1 })
+    })
+    const card = graph.createNode('COMPONENT', page.id, { name: 'Card', x: 200 })
+    const nested = graph.createInstance(button.id, card.id)
+    if (!nested) throw new Error('failed to create the nested instance')
+    const { recordInstanceOverride } = await import('@open-pencil/scene-graph/instances')
+    // The card's button is red; the instance of the card binds that button to a token.
+    graph.updateNode(nested.id, { fills: solid({ r: 0.9, g: 0.1, b: 0.1, a: 1 }) })
+    recordInstanceOverride(graph, nested.id, ['fills'])
+    const use = graph.createInstance(card.id, page.id, { name: 'Use', y: 100 })
+    if (!use) throw new Error('failed to create the instance')
+    const copy = graph.getChildren(use.id)[0]
+    graph.updateNode(copy.id, { fills: solid({ r: 0.84, g: 0.93, b: 0.91, a: 1 }) })
+    graph.bindVariable(copy.id, 'fills/0/color', accent.id)
+    recordInstanceOverride(graph, copy.id, ['fills', 'boundVariables'])
+
+    const reloaded = await parseFigFile((await exportFigFile(graph)).buffer as ArrayBuffer)
+    const reloadedUse = [...reloaded.getAllNodes()].find((node) => node.name === 'Use')
+    const reloadedCopy = reloadedUse ? reloaded.getChildren(reloadedUse.id)[0] : undefined
+    if (!reloadedUse || !reloadedCopy) throw new Error('Missing the reloaded copy')
+    reloaded.syncInstance(reloadedUse.id)
+    const bound = reloaded.getNode(reloadedCopy.id)?.boundVariables['fills/0/color']
+    expect(bound ? reloaded.variables.get(bound)?.name : undefined).toBe('accent-soft')
+  })
 })

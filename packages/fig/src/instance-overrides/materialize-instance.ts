@@ -239,11 +239,19 @@ function claimApplies(field: OverrideField, value: unknown, target: SceneNode): 
  * paint is part of the claim too, an alias or the lack of one: otherwise a later component
  * sync restores the component's binding over a colour the override set.
  */
-function recordPaintBindingClaims(
-  owner: SceneNode,
-  target: SceneNode,
-  scene: keyof SceneNode,
+/** An instance's claim on a layer's paints, which decides the layer's binding only if it wins. */
+interface PaintClaim {
+  owner: SceneNode
+  target: SceneNode
+  scene: keyof SceneNode
   paints: unknown
+  /** How deep the owner sits among the instances; the outermost owner's claim wins. */
+  depth: number
+}
+
+function recordPaintBindingClaims(
+  { owner, target, scene, paints }: PaintClaim,
+  wins: boolean
 ): void {
   if (!Array.isArray(paints)) return
   const pattern = new RegExp(`^${scene}/(\\d+)/color$`)
@@ -256,8 +264,9 @@ function recordPaintBindingClaims(
   for (const index of claimed) {
     const key = `${scene}/${index}/color`
     const paint: Paint | undefined = paints[index]
-    // The layer took the component's binding with its other fields; a literal colour drops it.
-    if (!paint?.colorVar?.value?.alias && key in target.boundVariables) {
+    const bound = Boolean(paint?.colorVar?.value?.alias)
+    // The layer took the component's binding with its other fields; a winning literal colour drops it.
+    if (wins && !bound && key in target.boundVariables) {
       const { [key]: _dropped, ...kept } = target.boundVariables
       target.boundVariables = kept
     }
@@ -266,7 +275,7 @@ function recordPaintBindingClaims(
       owner.id,
       target.id,
       `boundVariables/${key}`,
-      target.boundVariables[key] ?? null
+      bound ? (target.boundVariables[key] ?? null) : null
     )
   }
   if (claimed.length > 0)
@@ -274,6 +283,13 @@ function recordPaintBindingClaims(
 }
 
 function recordPropertyClaims(nodes: ReadonlyMap<InstanceOccurrence, SceneNode>): void {
+  const paintClaims: PaintClaim[] = []
+  const byId = new Map([...nodes.values()].map((node) => [node.id, node]))
+  const nesting = (node: SceneNode) => {
+    let depth = 0
+    for (let id = node.parentId; id && byId.has(id); id = byId.get(id)?.parentId ?? null) depth++
+    return depth
+  }
   for (const [ownerOccurrence, owner] of nodes) {
     if (owner.type !== 'INSTANCE') continue
     for (const claim of ownerOccurrence.propertyClaims) {
@@ -294,10 +310,24 @@ function recordPropertyClaims(nodes: ReadonlyMap<InstanceOccurrence, SceneNode>)
             structuredClone(value)
           )
         }
-        if (field.kind === 'paint')
-          recordPaintBindingClaims(owner, target, field.scene[0], claim.properties[raw])
+        if (field.kind === 'paint') {
+          paintClaims.push({
+            owner,
+            target,
+            scene: field.scene[0],
+            paints: claim.properties[raw],
+            depth: nesting(owner)
+          })
+        }
       }
       recordVariableBindingClaims(owner, target, claim.properties as NodeChange)
     }
   }
+  // Instances nested in one another can claim the same paints; the outermost one's claim wins.
+  const winners = new Map<string, number>()
+  const key = ({ target, scene }: PaintClaim) => `${target.id} ${String(scene)}`
+  for (const claim of paintClaims)
+    winners.set(key(claim), Math.min(winners.get(key(claim)) ?? claim.depth, claim.depth))
+  for (const claim of paintClaims)
+    recordPaintBindingClaims(claim, claim.depth === winners.get(key(claim)))
 }
