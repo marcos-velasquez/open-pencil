@@ -44,6 +44,16 @@ describe('drawing a radius corner by corner', () => {
     ])
   })
 
+  test('leaves the radius of a corner bound on its own', () => {
+    const { graph, node, radius, corner } = rectangle()
+    graph.bindVariable(node.id, 'cornerRadius', radius.id)
+    graph.bindVariable(node.id, 'topLeftRadius', corner.id)
+    graph.updateNode(node.id, { topLeftRadius: 2 })
+    const changes = independentCornerChanges(graph.getNode(node.id) ?? node)
+    expect(changes).not.toHaveProperty('topLeftRadius')
+    expect(changes).toMatchObject({ topRightRadius: 8, bottomLeftRadius: 8, bottomRightRadius: 8 })
+  })
+
   test('changes nothing on corners already drawn alone and bound alone', () => {
     const { graph, node } = rectangle()
     graph.updateNode(node.id, { independentCorners: true })

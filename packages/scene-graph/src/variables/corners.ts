@@ -11,15 +11,17 @@ const CORNERS = [
 
 /**
  * The changes that draw a layer's radius corner by corner, as Figma keeps it once corners can
- * differ: each corner takes the radius the layer shows, and a binding of the whole radius, which
- * a .fig or .pen file holds as one field, moves to every corner not bound on its own, so each
+ * differ: each corner not bound on its own takes the radius the layer shows, and a binding of the
+ * whole radius, which a .fig or .pen file holds as one field, moves to those corners, so each
  * corner can then change or be unbound alone.
  */
 export function independentCornerChanges(node: SceneNode): Partial<SceneNode> {
   const changes: Partial<SceneNode> = {}
   if (!node.independentCorners) {
     changes.independentCorners = true
-    for (const corner of CORNERS) changes[corner] = node.cornerRadius
+    // A corner bound on its own keeps the value its variable gave it.
+    for (const corner of CORNERS)
+      if (!node.boundVariables[corner]) changes[corner] = node.cornerRadius
   }
   const variableId = node.boundVariables.cornerRadius
   if (!variableId) return changes

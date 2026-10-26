@@ -21,6 +21,7 @@ describe('corner radius', () => {
     expect<number | symbol>(rect.cornerRadius).toBe(api.mixed)
   })
 
+  // Figma desktop, 2026-10-26: `mixed` after the first corner, then 5 once all four are 5.
   test('corners set one by one read as one radius once they agree, as in Figma', () => {
     const api = createAPI()
     const rect = api.createRectangle()
