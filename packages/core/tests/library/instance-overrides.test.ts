@@ -67,8 +67,8 @@ describe('instance overrides in library revisions', () => {
       },
       graph: {
         rootId: snapshot.rootId,
-        // JSON wrote each override `Map` as an empty object.
-        nodes: [...snapshot.nodes].map(([id, node]) => [id, { ...node, instanceOverrides: {} }]),
+        // Stored as it was: JSON writes each override `Map` as an empty object.
+        nodes: [...snapshot.nodes],
         images: [],
         variables: [],
         variableCollections: [],
