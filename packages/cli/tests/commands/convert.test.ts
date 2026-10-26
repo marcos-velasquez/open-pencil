@@ -66,4 +66,33 @@ describe('convert CLI', () => {
     expect(label.width).toBeCloseTo(measured.width, 0)
     expect(graph.getNode(label.parentId ?? '')?.width).toBeCloseTo(measured.width + 20, 0)
   })
+
+  test('reports a font it cannot load, and with --font-policy strict writes nothing', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'open-pencil-convert-fonts-'))
+    const source = join(dir, 'note.pen')
+    await Bun.write(
+      source,
+      JSON.stringify({
+        version: '2.21',
+        children: [
+          { id: 'note', type: 'text', content: 'Hola', fontFamily: 'Definitely Missing Font' }
+        ]
+      })
+    )
+    const warned = await cli(['convert', source, '-o', join(dir, 'warned.fig')])
+    expect(warned.exitCode).toBe(0)
+    expect(warned.stderr).toContain('Definitely Missing Font')
+    expect(await Bun.file(join(dir, 'warned.fig')).exists()).toBe(true)
+
+    const strict = await cli([
+      'convert',
+      source,
+      '-o',
+      join(dir, 'strict.fig'),
+      '--font-policy',
+      'strict'
+    ])
+    expect(strict.exitCode).not.toBe(0)
+    expect(await Bun.file(join(dir, 'strict.fig')).exists()).toBe(false)
+  })
 })

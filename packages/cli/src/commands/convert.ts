@@ -8,6 +8,7 @@ import { layoutAuthoredNodes } from '@open-pencil/core/layout'
 import { prepareGraphFonts } from '@open-pencil/core/text'
 
 import { requireFile } from '#cli/app/client'
+import { FONT_POLICIES, reportFontStatus } from '#cli/commands/export/font-policy'
 import { ok, printError } from '#cli/format'
 import { loadDocument, measureTextHeadlessly, populateWholeDocument } from '#cli/headless'
 
@@ -41,6 +42,12 @@ export default defineCommand({
       alias: 'f',
       description: 'Output format: fig (default: fig)',
       default: 'fig'
+    },
+    'font-policy': {
+      type: 'string',
+      description:
+        'When a font of the document is missing: warn, strict (fail without writing), or allow (default: warn)',
+      default: 'warn'
     }
   },
   async run({ args }) {
@@ -48,6 +55,11 @@ export default defineCommand({
     const writableFormats = writableFormatIds()
     if (!writableFormats.includes(format)) {
       printError(`Invalid format "${args.format}". Use ${writableFormats.join(', ')}.`)
+      process.exit(1)
+    }
+
+    if (!FONT_POLICIES.has(args['font-policy'])) {
+      printError(`Invalid font policy "${args['font-policy']}". Use warn, strict, or allow.`)
       process.exit(1)
     }
 
@@ -60,7 +72,7 @@ export default defineCommand({
     if (io.findReader(file)?.role !== 'native-document') {
       await measureTextHeadlessly()
       const pageIds = graph.getPages(true).map((page) => page.id)
-      await prepareGraphFonts(graph, pageIds)
+      reportFontStatus(await prepareGraphFonts(graph, pageIds), args['font-policy'])
       layoutAuthoredNodes(graph, pageIds)
     }
     const result = await io.writeDocument(format, graph)
