@@ -8,6 +8,7 @@ import {
 } from '@open-pencil/core/library'
 import { initCodec } from '@open-pencil/kiwi/fig/codec'
 import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
+import { applyComponentPropertyValue } from '@open-pencil/scene-graph/components'
 import { recordInstanceOverride } from '@open-pencil/scene-graph/instances'
 
 /** A library whose button holds an icon and a label, and whose card holds a relabeled button. */
@@ -163,5 +164,42 @@ describe('library definition updates', () => {
     expect(doc.graph.getNode(definition.componentId ?? '')?.librarySource?.identity.assetKey).toBe(
       'dot'
     )
+  })
+
+  test("points instance-swap properties at the document's copies of their components", async () => {
+    const source = new SceneGraph()
+    const page = source.getPages()[0]
+    const star = source.createNode('COMPONENT', page.id, { name: 'Star', componentKey: 'star' })
+    const heart = source.createNode('COMPONENT', page.id, { name: 'Heart', componentKey: 'heart' })
+    const button = source.createNode('COMPONENT', page.id, {
+      name: 'Button',
+      componentKey: 'button',
+      componentPropertyDefinitions: [
+        { id: 'icon', name: 'Icon', type: 'INSTANCE_SWAP', defaultValue: star.id }
+      ]
+    })
+    const icon = source.createInstance(star.id, button.id)
+    if (!icon) throw new Error('Expected the icon instance')
+    source.updateNode(icon.id, {
+      componentPropertyReferences: [{ propertyId: 'icon', field: 'INSTANCE_SWAP' }]
+    })
+    const card = source.createNode('COMPONENT', page.id, { name: 'Card', componentKey: 'card' })
+    const cardButton = source.createInstance(button.id, card.id)
+    const property = source.getNode(button.id)?.componentPropertyDefinitions[0]
+    if (!cardButton || !property) throw new Error('Expected the card button and its property')
+    applyComponentPropertyValue(source, cardButton.id, property, heart.id)
+    const graph = new SceneGraph()
+    const { componentId: cardId } = materializeLibraryAsset(graph, await revisionOf(source), 'card')
+
+    source.updateNode(button.id, { cornerRadius: 12 })
+    updateLibraryDefinitions(graph, await revisionOf(source))
+
+    const asset = (id: string | undefined) =>
+      graph.getNode(id ?? '')?.librarySource?.identity.assetKey
+    const inserted = graph.getChildren(cardId)[0]
+    const definition = graph.getNode(inserted?.componentId ?? '')
+    expect(definition?.cornerRadius).toBe(12)
+    expect(asset(definition?.componentPropertyDefinitions[0]?.defaultValue)).toBe('star')
+    expect(asset(inserted?.componentPropertyAssignments.icon)).toBe('heart')
   })
 })

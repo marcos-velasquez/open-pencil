@@ -1,3 +1,4 @@
+import { mapValues } from 'es-toolkit'
 import { groupBy } from 'es-toolkit/array'
 
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
@@ -186,6 +187,14 @@ export function updateLibraryDefinitions(
     return inside ?? found[0]
   }
 
+  // An instance-swap property names the components it offers by their revision IDs too.
+  const swapProperties = new Set(
+    [...revision.graph.getAllNodes()].flatMap((node) =>
+      node.componentPropertyDefinitions.flatMap((definition) =>
+        definition.type === 'INSTANCE_SWAP' ? [definition.id] : []
+      )
+    )
+  )
   // Pairs grow while this runs, as components new to the definitions are copied in.
   for (const { source, target, tree } of pairs) {
     const componentId = source.componentId
@@ -197,8 +206,33 @@ export function updateLibraryDefinitions(
       overrideKey: _overrideKey,
       ...fields
     } = cloneNodeProps(source, componentId)
+    const previousDefaults = new Map(
+      target.componentPropertyDefinitions.map((definition) => [
+        definition.id,
+        definition.defaultValue
+      ])
+    )
     graph.updateNode(target.id, {
       ...fields,
+      componentPropertyDefinitions: (fields.componentPropertyDefinitions ?? []).map((definition) =>
+        definition.type === 'INSTANCE_SWAP' && definition.defaultValue
+          ? {
+              ...definition,
+              defaultValue: copyOf(
+                definition.defaultValue,
+                previousDefaults.get(definition.id) ?? null,
+                null
+              )
+            }
+          : definition
+      ),
+      componentPropertyAssignments: mapValues(
+        fields.componentPropertyAssignments ?? {},
+        (value, id) =>
+          swapProperties.has(id)
+            ? copyOf(value, target.componentPropertyAssignments[id] ?? null, null)
+            : value
+      ),
       locked: true,
       boundVariables: Object.fromEntries(
         Object.entries(source.boundVariables).map(([field, id]) => [field, variable(id)])
