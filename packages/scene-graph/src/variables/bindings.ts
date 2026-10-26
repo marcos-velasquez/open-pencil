@@ -4,13 +4,15 @@ import type { SceneGraph } from '../graph'
 import { hasInstanceOverride } from '../instances'
 import type { Color } from '../primitives'
 import type { Fill, SceneNode, Stroke, StyleRun } from '../types'
-import { NUMERIC_FIELDS, isNumericVariableBindingField } from './fields'
+import { NUMERIC_FIELDS, isNumericVariableBindingField, paintBindingTarget } from './fields'
 import { variableText, variableTruthy } from './text'
 import { variableValueReferences } from './value'
 export {
   isNumericVariableBindingField,
+  paintBindingTarget,
   TEXT_CONTENT_VARIABLE_TYPES,
-  VISIBILITY_VARIABLE_TYPES
+  VISIBILITY_VARIABLE_TYPES,
+  type PaintBindingList
 } from './fields'
 
 /** New declarations belong to the outermost occurrence, bounded by a component definition. */
@@ -144,13 +146,12 @@ export function resolvedPaintBindings(
   // Most nodes bind nothing, so no copy is made until a paint binding is actually found.
   const changes: Pick<Partial<SceneNode>, 'fills' | 'strokes'> = {}
   for (const field in node.boundVariables) {
-    if (!field.endsWith('/color')) continue
-    const match = /^(fills|strokes)\/(\d+)\/color$/.exec(field)
-    if (!match) continue
+    const paint = paintBindingTarget(field)
+    if (!paint) continue
     const color = graph.resolveColorVariableForNode(node.id, node.boundVariables[field], fallback)
-    const index = Number(match[2])
+    const { index } = paint
     if (!color) continue
-    if (match[1] === 'fills') {
+    if (paint.list === 'fills') {
       if (!node.fills[index]) continue
       changes.fills ??= copyFills(node.fills)
       applyBoundColor(changes.fills[index], color)
