@@ -53,9 +53,18 @@ import { combineComponentsAsVariants } from './variants'
 const noop = () => undefined
 
 /** What a host passes to `FigmaAPI` beyond the document. */
+/**
+ * Brings the library component or component set with `key` into the document, as a host that
+ * reaches the document's libraries does, and gives the node it became, or null for a key no
+ * library has.
+ */
+export type LibraryComponentImporter = (key: string) => Promise<string | null>
+
 export interface FigmaAPIOptions {
   /** Fetches the HTTP(S) URLs `figma.createImageAsync` loads; the global `fetch` by default. */
   fetch?: images.ImageFetch
+  /** Where `importComponentByKeyAsync` finds library components; none without one. */
+  importComponent?: LibraryComponentImporter
 }
 
 export { FigmaNodeProxy } from './proxy'
@@ -114,10 +123,12 @@ export class FigmaAPI implements NodeProxyHost {
 
   /** How `createImageAsync` fetches HTTP(S) URLs; a host passes one that gets past CORS. */
   readonly #fetch: images.ImageFetch
+  readonly #importComponent: LibraryComponentImporter | undefined
 
   constructor(graph: SceneGraph, options: FigmaAPIOptions = {}) {
     this.graph = graph
     this.#fetch = options.fetch ?? ((input, init) => fetch(input, init))
+    this.#importComponent = options.importComponent
     this.variables = new FigmaVariablesAPI(graph)
     startPendingLayout(graph)
     const pages = graph.getPages()
@@ -182,6 +193,29 @@ export class FigmaAPI implements NodeProxyHost {
   /** The async lookup that Figma requires in dynamic-page mode; same result as getNodeById. */
   async getNodeByIdAsync(id: string): Promise<FigmaNodeProxy | null> {
     return this.getNodeById(id)
+  }
+
+  /** A library component brought into the document by its key, as Figma imports one. */
+  async importComponentByKeyAsync(key: string): Promise<FigmaComponentNode> {
+    return (await this.#importLibraryNode(key, 'COMPONENT')) as FigmaComponentNode
+  }
+
+  /** A library component set brought into the document by its key, as Figma imports one. */
+  async importComponentSetByKeyAsync(key: string): Promise<FigmaComponentSetNode> {
+    return (await this.#importLibraryNode(key, 'COMPONENT_SET')) as FigmaComponentSetNode
+  }
+
+  async #importLibraryNode(
+    key: string,
+    type: 'COMPONENT' | 'COMPONENT_SET'
+  ): Promise<FigmaNodeProxy> {
+    const id = this.#importComponent ? await this.#importComponent(key) : null
+    const node = id ? this.graph.getNode(id) : undefined
+    if (node?.type !== type) {
+      const kind = type === 'COMPONENT' ? 'component' : 'component set'
+      throw new Error(`No library ${kind} with key ${key}`)
+    }
+    return this.wrapNode(node.id)
   }
 
   /**

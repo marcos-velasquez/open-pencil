@@ -29,6 +29,8 @@ export type SupportedPluginAPI = Pick<
   | 'closePlugin'
   | 'getFontFamilyVariationAxes'
   | 'getImageByHash'
+  | 'importComponentByKeyAsync'
+  | 'importComponentSetByKeyAsync'
   | 'loadAllPagesAsync'
   | 'loadFontAsync'
   | 'notify'

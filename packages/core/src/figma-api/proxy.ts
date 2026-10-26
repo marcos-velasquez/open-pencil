@@ -276,6 +276,15 @@ export class FigmaNodeProxy {
     // alone; every page here is already loaded.
     if (type === 'CANVAS')
       Object.defineProperty(this, 'loadAsync', { value: () => Promise.resolve() })
+    // The key `importComponentByKeyAsync` takes, as components and component sets have in Figma.
+    if (type === 'COMPONENT' || type === 'COMPONENT_SET') {
+      Object.defineProperty(this, 'key', {
+        get: () => {
+          const node = graph.getNode(id)
+          return node?.componentKey ?? node?.sourceLibraryKey ?? id
+        }
+      })
+    }
   }
 
   private _update(changes: Partial<SceneNode>): void {
