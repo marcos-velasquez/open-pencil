@@ -7,7 +7,8 @@ import {
   type HyperlinkTarget,
   type SceneNode,
   type StyleRun,
-  type TextBoundVariables
+  type TextBoundVariables,
+  type TextLength
 } from '@open-pencil/scene-graph'
 import {
   SHARED_TEXT_STYLE_FIELDS,
@@ -29,10 +30,11 @@ export type CharacterStyle = Required<
     | 'textDecorationFills'
     | 'textDecorationSkipInk'
     | 'fontFeatures'
+    | 'fontVariations'
     | 'textCase'
   >
 > & {
-  lineHeight: number | null
+  lineHeight: TextLength | null
   textDecorationThickness: number | null
   textUnderlineOffset: number | null
   hyperlink: HyperlinkTarget | null
@@ -58,6 +60,7 @@ export const TEXT_STYLE_KEYS = [
   'textDecorationSkipInk',
   'textUnderlineOffset',
   'fontFeatures',
+  'fontVariations',
   'textCase'
 ] as const satisfies readonly (keyof CharacterStyle)[]
 
@@ -89,6 +92,7 @@ export function nodeStyle(node: SceneNode): CharacterStyle {
     textDecorationSkipInk: node.textDecorationSkipInk,
     textUnderlineOffset: node.textUnderlineOffset,
     fontFeatures: node.fontFeatures,
+    fontVariations: node.fontVariations,
     textCase: node.textCase,
     hyperlink: null,
     textStyleId: node.textStyleId,

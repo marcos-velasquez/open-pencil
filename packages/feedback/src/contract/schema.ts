@@ -12,6 +12,7 @@ export const LOCALES = ['en', 'de', 'es', 'fr', 'it', 'ja', 'pl', 'ru', 'zh-CN']
 export const DOCUMENT_FORMATS = [
   'fig',
   'pen',
+  'drawio',
   'png',
   'jpg',
   'webp',
@@ -33,6 +34,7 @@ export const AI_PROVIDERS = [
   'zai',
   'minimax',
   'anthropic-compatible',
+  'openpencil',
   'harness:pi',
   'acp:claude-code',
   'acp:codex',

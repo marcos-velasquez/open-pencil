@@ -14,13 +14,14 @@ import {
   type CloudDiscovery
 } from '#cloud/contract'
 import { createAccountRoutes } from '#cloud/server/account/routes'
-import { createAIRoutes, createAITokenService, type AISigningKey } from '#cloud/server/ai'
+import { createAITokenService, type AISigningKey } from '#cloud/server/ai'
 import {
   createCloudAPIRouter,
   createPublicCloudAPIRouter,
   type CloudAPIEnvironment
 } from '#cloud/server/api'
 import {
+  createAuthenticationEmailService,
   createCloudIdentityResolver,
   createCloudSessionResolver,
   type CloudAuthAdapter,
@@ -40,6 +41,7 @@ import type { TransactionalEmailService } from '#cloud/server/email'
 import { createInternalRoutes, createInternalService } from '#cloud/server/internal'
 import type { InvitationDelivery, InvitationOutbox } from '#cloud/server/invitations'
 import type { ObjectStore } from '#cloud/server/objects'
+import { createPictureRoutes, createUserPictures } from '#cloud/server/pictures'
 import {
   createConfiguredCloudPolicy,
   createDefaultCloudPolicy,
@@ -168,6 +170,7 @@ export function createCloudApp(services: CloudServices) {
     maxAge: 600
   })
   const workspaces = createWorkspaceService(services.database)
+  const pictures = createUserPictures(services.database, { publicURL: services.config.publicURL })
   const workspaceMembers = createWorkspaceMemberService(services.database, {
     email: services.transactionalEmail,
     publicURL: services.config.publicURL
@@ -186,7 +189,11 @@ export function createCloudApp(services: CloudServices) {
       }),
       enrollment,
       users: createAdminUserService(services.database, services.auth, {
-        requireMFA: services.config.deploymentAdminMFARequired
+        requireMFA: services.config.deploymentAdminMFARequired,
+        pictures,
+        notify: services.transactionalEmail
+          ? createAuthenticationEmailService(services.transactionalEmail, services.config.publicURL)
+          : undefined
       }),
       audit: createAdminAuditService(services.database),
       operations: createAdminOperationsService(services.database, services.config)
@@ -293,6 +300,7 @@ export function createCloudApp(services: CloudServices) {
 
   const accountRoutes = createAccountRoutes({
     auth: services.auth,
+    pictures,
     config: services.config,
     enrollment,
     workspaces,
@@ -308,6 +316,7 @@ export function createCloudApp(services: CloudServices) {
     documents,
     versions,
     entitlements,
+    aiTokens,
     sharing,
     workspaces,
     workspaceMembers,
@@ -393,6 +402,7 @@ export function createCloudApp(services: CloudServices) {
       return services.auth.handler(context.req.raw)
     })
     .route('/', accountRoutes)
+    .route('/', createPictureRoutes(pictures))
     .use('/api/shares/:shareId/collaboration-ticket', publicCollaborationLimiter)
     .use('/api/public/*', publicRateLimiter)
     .use('/api/shares/*', publicRateLimiter)
@@ -402,10 +412,6 @@ export function createCloudApp(services: CloudServices) {
     .use('/api/*', requireActiveSession)
     .route('/api/admin', admin)
     .use('/api/*', authenticatedMutationLimiter)
-    .route(
-      '/api',
-      createAIRoutes(aiTokens, { database: services.database, secret: services.config.authSecret })
-    )
     .route('/api', cloudAPI)
 }
 
