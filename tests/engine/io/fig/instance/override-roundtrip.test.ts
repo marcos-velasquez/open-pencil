@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { exportFigFile, parseFigFile } from '@open-pencil/core/io/formats/fig'
 import { initCodec } from '@open-pencil/kiwi/fig/codec'
 import { SceneGraph } from '@open-pencil/scene-graph'
+import { getInstanceOverride } from '@open-pencil/scene-graph/instances/overrides'
 import type { Color } from '@open-pencil/scene-graph/primitives'
 
 describe('instance descendant fill override round trip', () => {
@@ -89,6 +90,14 @@ describe('instance descendant fill override round trip', () => {
     const synced = reloaded.getNode(reloadedCopy.id)
     expect(synced?.fills[0]).toMatchObject({ color: { r: 0, g: 0, b: 0, a: 0 }, opacity: 0 })
     expect(synced?.boundVariables['fills/0/color']).toBeUndefined()
+    // The nested instance's own claim keeps its binding, which returns once the outer one goes.
+    const own = getInstanceOverride(
+      reloadedCopy.instanceOverrides,
+      reloadedCopy.id,
+      reloadedCopy.id,
+      'boundVariables/fills/0/color'
+    )
+    expect(typeof own === 'string' ? reloaded.variables.get(own)?.name : own).toBe('accent-soft')
   })
 
   test('a variable an outer instance binds over a nested literal fill stays after reload', async () => {

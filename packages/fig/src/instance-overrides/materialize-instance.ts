@@ -1,6 +1,7 @@
 import { isEqual } from 'es-toolkit/predicate'
 
 import type { NodeChange, Paint } from '@open-pencil/kiwi/fig/codec'
+import { guidToString } from '@open-pencil/kiwi/fig/guid'
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import { setInstanceOverride } from '@open-pencil/scene-graph/instances/overrides'
 import { createDefaultSourceMetadata } from '@open-pencil/scene-graph/node-defaults'
@@ -264,7 +265,8 @@ function recordPaintBindingClaims(
   for (const index of claimed) {
     const key = `${scene}/${index}/color`
     const paint: Paint | undefined = paints[index]
-    const bound = Boolean(paint?.colorVar?.value?.alias)
+    const alias = paint?.colorVar?.value?.alias
+    const bound = Boolean(alias)
     // The layer took the component's binding with its other fields; a winning literal colour drops it.
     if (wins && !bound && key in target.boundVariables) {
       const { [key]: _dropped, ...kept } = target.boundVariables
@@ -275,7 +277,8 @@ function recordPaintBindingClaims(
       owner.id,
       target.id,
       `boundVariables/${key}`,
-      bound ? (target.boundVariables[key] ?? null) : null
+      // The claim's own binding, so it returns once an outer claim that won is removed.
+      alias?.guid ? guidToString(alias.guid) : bound ? (target.boundVariables[key] ?? null) : null
     )
   }
   if (claimed.length > 0)
