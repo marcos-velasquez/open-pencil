@@ -110,21 +110,21 @@ function sourceLayer(graph: SceneGraph, rootId: string, node: SceneNode): SceneN
 
 /**
  * A layer's place in an instance: the names of the component layers down to it, each with its
- * rank among namesakes.
+ * rank among namesakes, as a JSON list, so no name can be read as two levels.
  */
 function layerPath(graph: SceneGraph, rootId: string, node: SceneNode): string {
   const name = (layer: SceneNode) => sourceLayer(graph, rootId, layer).name
-  const parts: string[] = []
+  const parts: [name: string, rank: number][] = []
   for (let id: string | null = node.id; id && id !== rootId;) {
     const layer = graph.getNode(id)
     if (!layer) break
     const siblings = (layer.parentId ? graph.getChildren(layer.parentId) : []).filter(
       (sibling) => name(sibling) === name(layer)
     )
-    parts.unshift(`${name(layer)}#${siblings.findIndex((sibling) => sibling.id === layer.id)}`)
+    parts.unshift([name(layer), siblings.findIndex((sibling) => sibling.id === layer.id)])
     id = layer.parentId
   }
-  return parts.join('/')
+  return JSON.stringify(parts)
 }
 
 /** Drops the overrides an instance keeps for layers a swap removed. */
