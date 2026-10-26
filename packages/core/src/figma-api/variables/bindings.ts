@@ -1,4 +1,5 @@
 import { uniq } from 'es-toolkit/array'
+import { isEmptyObject } from 'es-toolkit/predicate'
 
 import {
   TEXT_BINDABLE_FIELDS,
@@ -8,6 +9,8 @@ import {
   type Variable,
   type VariableType
 } from '@open-pencil/scene-graph'
+import { recordInstanceOverride } from '@open-pencil/scene-graph/instances'
+import { independentCornerChanges } from '@open-pencil/scene-graph/variables'
 
 import { reconcileVariableLayouts } from '#core/layout/variables'
 
@@ -138,28 +141,12 @@ function documentFields(field: FigmaBindableNodeField): readonly string[] {
 const isCornerField = (field: string): boolean =>
   field === 'cornerRadius' || (CORNER_FIELDS as readonly string[]).includes(field)
 
-/**
- * Keeps a radius corner by corner before a script binds or unbinds one, as Figma keeps it: each
- * corner takes the radius the layer shows and is drawn on its own, and a uniform binding a .pen or
- * .fig file holds as one field becomes a binding per corner, so each can change or be unbound.
- */
+/** Draws the layer corner by corner before a script binds or unbinds one, as Figma does. */
 function separateCorners(graph: SceneGraph, node: SceneNode): void {
-  if (!node.independentCorners) {
-    const radius = node.cornerRadius
-    graph.updateNode(node.id, {
-      topLeftRadius: radius,
-      topRightRadius: radius,
-      bottomLeftRadius: radius,
-      bottomRightRadius: radius,
-      independentCorners: true
-    })
-  }
-  const id = node.boundVariables.cornerRadius
-  if (!id) return
-  graph.unbindVariable(node.id, 'cornerRadius')
-  for (const corner of CORNER_FIELDS) {
-    if (!node.boundVariables[corner]) graph.bindVariable(node.id, corner, id)
-  }
+  const changes = independentCornerChanges(node)
+  if (isEmptyObject(changes)) return
+  graph.updateNode(node.id, changes)
+  recordInstanceOverride(graph, node.id, Object.keys(changes))
 }
 
 /**
@@ -172,6 +159,8 @@ export function setLayerBinding(
   field: FigmaBindableNodeField,
   variable: Variable | null
 ): void {
+  // Figma keeps the corners' own bindings when a script unbinds the radius as a whole.
+  if (field === 'cornerRadius' && !variable) return
   if (isCornerField(field)) separateCorners(graph, node)
   for (const name of documentFields(field)) {
     if (variable) graph.bindVariable(node.id, name, variable.id)

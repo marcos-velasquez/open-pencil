@@ -220,6 +220,34 @@ describe('node variable bindings', () => {
     expect(radii()).toEqual([20, 20, 20, 20, 20])
   })
 
+  test('setting one corner of a radius a file binds as one field keeps the others bound', () => {
+    const { api, size } = tokens()
+    const rect = api.createRectangle()
+    api.graph.bindVariable(rect.id, 'cornerRadius', size.id)
+    rect.topLeftRadius = 20
+    const bound = api.graph.getNode(rect.id)?.boundVariables ?? {}
+    expect(bound).not.toHaveProperty('cornerRadius')
+    expect(bound).toMatchObject({
+      topRightRadius: size.id,
+      bottomLeftRadius: size.id,
+      bottomRightRadius: size.id
+    })
+  })
+
+  // Figma desktop, 2026-10-26: unbinding `cornerRadius` leaves every corner's binding in place.
+  test('unbinding the radius as a whole keeps the corners bound', () => {
+    const { api, size } = tokens()
+    const rect = api.createRectangle()
+    rect.setBoundVariable('cornerRadius', size)
+    rect.setBoundVariable('cornerRadius', null)
+    expect(Object.keys(rect.boundVariables)).toEqual([
+      'topLeftRadius',
+      'topRightRadius',
+      'bottomLeftRadius',
+      'bottomRightRadius'
+    ])
+  })
+
   test('a radius bound as a whole is drawn at the variable’s value', () => {
     const { api, mode, size } = tokens()
     const rect = api.createRectangle()

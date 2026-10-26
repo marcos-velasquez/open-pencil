@@ -3,7 +3,7 @@ import { normalizeColor } from '@open-pencil/scene-graph/color'
 import { copyFills, copyStrokes } from '@open-pencil/scene-graph/copy'
 import { newStrokeGeometry } from '@open-pencil/scene-graph/node-defaults'
 import type { Color } from '@open-pencil/scene-graph/primitives'
-import { resolvedPaintBindings } from '@open-pencil/scene-graph/variables'
+import { independentCornerChanges, resolvedPaintBindings } from '@open-pencil/scene-graph/variables'
 
 import {
   graph,
@@ -295,7 +295,10 @@ function cornerAccessor(
       return raw(this, internals)[field]
     },
     set(this: ProxyThis, value: number) {
-      updateNode(this, internals, { [field]: value, independentCorners: true })
+      updateNode(this, internals, {
+        ...independentCornerChanges(raw(this, internals)),
+        [field]: value
+      })
     }
   }
 }
