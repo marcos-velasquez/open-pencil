@@ -53,7 +53,9 @@ function encodeStoredValue(value: unknown): unknown {
   if (value && typeof value === 'object') {
     const encoded = mapValues(value, encodeStoredValue)
     // An object that already looks like a tag is wrapped, so decoding cannot mistake it for one.
-    return '$openPencilType' in value ? { $openPencilType: OBJECT_TAG, value: encoded } : encoded
+    return '$openPencilType' in value || '$bytes' in value
+      ? { $openPencilType: OBJECT_TAG, value: encoded }
+      : encoded
   }
   return value
 }

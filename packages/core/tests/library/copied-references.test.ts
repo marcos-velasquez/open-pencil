@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { createLibraryRevision, materializeLibraryAsset } from '@open-pencil/core/library'
 import { SceneGraph } from '@open-pencil/scene-graph'
+import { applyComponentPropertyValue } from '@open-pencil/scene-graph/components'
 
 /** A library whose button swaps its icon through an instance-swap property. */
 function libraryWithIconProperty() {
@@ -24,7 +25,9 @@ function libraryWithIconProperty() {
   const card = graph.createNode('COMPONENT', page.id, { name: 'Card', componentKey: 'card' })
   const cardButton = graph.createInstance(button.id, card.id)
   if (!cardButton) throw new Error('Expected the card button')
-  graph.updateNode(cardButton.id, { componentPropertyAssignments: { icon: heart.id } })
+  const property = graph.getNode(button.id)?.componentPropertyDefinitions[0]
+  if (!property) throw new Error('Expected the icon property')
+  applyComponentPropertyValue(graph, cardButton.id, property, heart.id)
   return graph
 }
 
@@ -46,8 +49,11 @@ describe('references between copied library layers', () => {
     expect(named(stored, cardButton?.componentPropertyAssignments.icon)).toBe('Heart')
 
     const consumer = new SceneGraph()
-    const { componentId } = materializeLibraryAsset(consumer, revision, 'button')
-    const definition = consumer.getNode(componentId)?.componentPropertyDefinitions[0]
+    const { componentId } = materializeLibraryAsset(consumer, revision, 'card')
+    const inserted = consumer.getChildren(componentId)[0]
+    const definition = consumer.getNode(inserted?.componentId ?? '')
+      ?.componentPropertyDefinitions[0]
     expect(named(consumer, definition?.defaultValue)).toBe('Star')
+    expect(named(consumer, inserted?.componentPropertyAssignments.icon)).toBe('Heart')
   })
 })
