@@ -1,0 +1,1 @@
+- `openpencil libraries update` brings a document's library components to the revision of the library's source file, keeping their overrides, and `openpencil eval --library` lets a script import a library component by its key.
