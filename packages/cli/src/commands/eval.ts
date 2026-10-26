@@ -13,6 +13,7 @@ import {
   populateWholeDocument,
   writeFigDocument
 } from '#cli/headless'
+import { libraryImporter, parseLibrarySource } from '#cli/library/import'
 
 function printResult(value: unknown, json: boolean) {
   if (json || !process.stdout.isTTY) {
@@ -41,6 +42,15 @@ export default defineCommand({
     },
     code: { type: 'string', alias: 'c', description: 'JavaScript code to execute' },
     stdin: { type: 'boolean', description: 'Read code from stdin' },
+    library: {
+      type: 'string',
+      description:
+        'A library the script imports components from with figma.importComponentByKeyAsync, as <id>=<file.fig> (repeatable)'
+    },
+    'variables-by-name': {
+      type: 'boolean',
+      description: "Bind imported components to the document's variables with the same names"
+    },
     ...documentWriteOptions,
     ...appTargetOptions,
     json: { type: 'boolean', description: 'Output as JSON' },
@@ -72,7 +82,14 @@ export default defineCommand({
     const graph = await loadDocument(file)
     populateWholeDocument(graph)
     await measureTextHeadlessly()
-    const figma = new FigmaAPI(graph)
+    const libraries = args.library
+      ? (Array.isArray(args.library) ? args.library : [args.library]).map(parseLibrarySource)
+      : []
+    const figma = new FigmaAPI(graph, {
+      importComponent: libraryImporter(graph, libraries, {
+        variablesByName: args['variables-by-name']
+      })
+    })
 
     let result: unknown
     try {

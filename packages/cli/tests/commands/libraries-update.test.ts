@@ -11,11 +11,16 @@ import { createLibraryRevision, materializeLibraryAsset } from '@open-pencil/cor
 import { initCodec } from '@open-pencil/kiwi/fig/codec'
 import { SceneGraph } from '@open-pencil/scene-graph'
 import { recordInstanceOverride } from '@open-pencil/scene-graph/instances'
+import type { Color } from '@open-pencil/scene-graph/primitives'
 
 setDefaultTimeout(60_000)
 
-async function cli(args: string[]) {
-  const proc = Bun.spawn([process.execPath, CLI_ENTRY, ...args], { stdout: 'pipe', stderr: 'pipe' })
+async function cli(args: string[], stdin?: string) {
+  const proc = Bun.spawn([process.execPath, CLI_ENTRY, ...args], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+    stdin: stdin ? Buffer.from(stdin) : undefined
+  })
   const [stdout, stderr] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text()
@@ -115,5 +120,55 @@ describe('libraries update CLI', () => {
     ])
     expect(v.parse(v.pipe(v.string(), v.parseJson(), resultSchema), other.stdout).used).toBe(false)
     expect(await readFile(document)).toEqual(saved)
+  })
+
+  test('places a library component a script imports by key, bound to the document tokens', async () => {
+    await initCodec()
+    const dir = await mkdtemp(join(tmpdir(), 'open-pencil-libraries-import-'))
+    const source = join(dir, 'library.fig')
+    const document = join(dir, 'document.fig')
+    const tokens = (graph: SceneGraph, color: Color) => {
+      const collection = graph.createCollection('Tokens')
+      return graph.createVariable('accent', 'COLOR', collection.id, color)
+    }
+    const libraryGraph = library(80, 'Go')
+    const button = [...libraryGraph.getAllNodes()].find((node) => node.name === 'Button')
+    if (!button) throw new Error('Expected the button')
+    const accent = tokens(libraryGraph, { r: 0, g: 0, b: 1, a: 1 })
+    libraryGraph.updateNode(button.id, {
+      fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 1, a: 1 }, opacity: 1, visible: true }],
+      boundVariables: { 'fills/0/color': accent.id }
+    })
+    await Bun.write(source, await exportFigFile(libraryGraph))
+    const consumer = new SceneGraph()
+    tokens(consumer, { r: 0, g: 0.5, b: 0.4, a: 1 })
+    await Bun.write(document, await exportFigFile(consumer))
+
+    const script = `
+      const button = await figma.importComponentByKeyAsync('button')
+      button.createInstance().name = 'Placed'
+      return button.key
+    `
+    const imported = await cli(
+      ['eval', document, '--library', `ds=${source}`, '--variables-by-name', '--stdin', '--write'],
+      script
+    )
+    expect(imported.exitCode).toBe(0)
+
+    const placed = await cli([
+      'eval',
+      document,
+      '--json',
+      '-c',
+      `const main = figma.root.findOne((node) => node.name === 'Placed').mainComponent
+       const token = figma.variables.getVariableById(main.boundVariables.fills[0].id)
+       return [JSON.parse(main.getPluginData('librarySource')).identity.libraryId, token.name, token.valuesByMode[Object.keys(token.valuesByMode)[0]].g]`
+    ])
+    expect(JSON.parse(placed.stdout)).toEqual(['ds', 'accent', 0.5])
+
+    const update = await cli(['libraries', 'update', document, '--source', source, '--json'])
+    expect(v.parse(v.pipe(v.string(), v.parseJson(), resultSchema), update.stdout).current).toBe(
+      true
+    )
   })
 })
