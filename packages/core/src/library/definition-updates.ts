@@ -7,7 +7,12 @@ import { remapInstanceOverrideState } from '@open-pencil/scene-graph/instances/o
 
 import { componentSyncOrder } from '#core/editor/component-sync'
 
-import { copyLibraryTree, getInternalLibraryPage, libraryDefinitionSource } from './materialize'
+import {
+  copyImages,
+  copyLibraryTree,
+  getInternalLibraryPage,
+  libraryDefinitionSource
+} from './materialize'
 import type { ComponentLibraryRevision } from './types'
 
 export interface LibraryDefinitionUpdateOptions {
@@ -253,6 +258,11 @@ export function updateLibraryDefinitions(
     })
   }
 
+  copyImages(
+    revision.graph,
+    graph,
+    new Map(pairs.map(({ source, target }) => [source.id, target.id]))
+  )
   graph.enabledLibraries.set(libraryId, { libraryId, revisionId, enabled: true })
   const components = pairs.flatMap(({ target }) => (target.type === 'COMPONENT' ? [target.id] : []))
   graph.syncInstancesTogether(componentSyncOrder(graph, new Set(components)))
