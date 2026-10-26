@@ -76,7 +76,8 @@ function replaceLayer(build: Build, target: SceneNode, replacement: PenOverride)
     graph.deleteNode(target.id)
     const id = createSceneNode(pen, parentId, build)
     if (id && index >= 0) graph.insertChildAt(id, parentId, index)
-    if (id) build.replaced.add(id)
+    // The parent's layers changed; a replacement that is itself an instance stays one.
+    if (id) build.replaced.add(parentId)
   })
 }
 
@@ -117,7 +118,7 @@ function overrideLayer(build: Build, target: SceneNode, override: PenOverride): 
 }
 
 /**
- * Detaches the instances holding a layer an override put in place of copies. An instance keeps
+ * Detaches the instances holding a layer whose children an override replaced. An instance keeps
  * its component's layers, overriding their fields but never replacing them, so such an instance
  * becomes a frame that keeps what it shows, as detaching it in Figma does.
  */

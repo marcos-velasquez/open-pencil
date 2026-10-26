@@ -179,6 +179,31 @@ describe('parsePenFile — instances', () => {
     expect(graph.getChildren('kept')[1]?.type).toBe('INSTANCE')
   })
 
+  test('keeps a replacement that is an instance of another component', () => {
+    const badge: PenNode = {
+      id: 'badge',
+      type: 'frame',
+      reusable: true,
+      children: [{ id: 'badgeLabel', type: 'text', content: 'New' }]
+    }
+    const graph = parseDocument([
+      button,
+      badge,
+      {
+        id: 'withBadge',
+        type: 'ref',
+        ref: 'button',
+        descendants: { dot: { type: 'ref', id: 'swappedBadge', ref: 'badge' } }
+      }
+    ])
+    expect(getNodeOrThrow(graph, 'withBadge').type).toBe('FRAME')
+    expect(getNodeOrThrow(graph, 'swappedBadge')).toMatchObject({
+      type: 'INSTANCE',
+      componentId: 'badge'
+    })
+    expect(graph.getChildren('swappedBadge').map((node) => node.text)).toEqual(['New'])
+  })
+
   test('hides a descendant through its enabled field', () => {
     const graph = parseDocument([
       button,
