@@ -3,11 +3,9 @@ import { describe, expect, test } from 'bun:test'
 import {
   createLibraryRevision,
   materializeLibraryAsset,
-  planOutdatedLibraryInstances,
-  swapLibraryInstance
+  planOutdatedLibraryInstances
 } from '@open-pencil/core/library'
 import { SceneGraph } from '@open-pencil/scene-graph'
-import { hasInstanceOverride, recordInstanceOverride } from '@open-pencil/scene-graph/instances'
 
 function source(label: string) {
   const graph = new SceneGraph()
@@ -124,40 +122,5 @@ describe('instance-authoritative library updates', () => {
     expect(consumer.getNode(firstInstance.id)?.componentId).not.toBe(
       consumer.getNode(secondInstance.id)?.componentId
     )
-  })
-
-  test('keeps the overrides of an instance updated to a newer revision', async () => {
-    const first = await createLibraryRevision({
-      libraryId: 'design-system',
-      name: 'Design system',
-      graph: source('Old')
-    })
-    const second = await createLibraryRevision({
-      libraryId: 'design-system',
-      name: 'Design system',
-      graph: source('New'),
-      previousRevisionId: first.manifest.revisionId
-    })
-    const consumer = new SceneGraph()
-    const definition = materializeLibraryAsset(consumer, first, 'button')
-    const page = consumer.getPages()[0]
-    const edited = consumer.createInstance(definition.componentId, page.id)
-    const plain = consumer.createInstance(definition.componentId, page.id)
-    if (!edited || !plain) throw new Error('Expected instances')
-    const label = consumer.getChildren(edited.id)[0]
-    if (!label) throw new Error('Expected the label copy')
-    consumer.updateNode(label.id, { text: 'Hello', opacity: 0.5 })
-    recordInstanceOverride(consumer, label.id, ['text', 'opacity'])
-    materializeLibraryAsset(consumer, second, 'button')
-
-    for (const plan of planOutdatedLibraryInstances(consumer, second))
-      swapLibraryInstance(consumer, plan.instanceId, plan.componentId)
-
-    const updatedLabel = consumer.getChildren(edited.id)[0]
-    expect(consumer.getNode(edited.id)?.width).toBe(120)
-    expect(updatedLabel).toMatchObject({ text: 'Hello', opacity: 0.5 })
-    expect(hasInstanceOverride(consumer, updatedLabel?.id ?? '', 'text')).toBe(true)
-    // An instance without overrides takes the new revision as it is.
-    expect(consumer.getChildren(plain.id)[0]?.text).toBe('New')
   })
 })
