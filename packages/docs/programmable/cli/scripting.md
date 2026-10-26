@@ -48,6 +48,25 @@ const label = figma.currentPage.findOne((node) => node.name === 'Price')
 openpencil.bindVariable(label, 'text', price)
 ```
 
+## Library components
+
+`--library <id>=<file.fig>` lets a script place the components of a library from its source file. `figma.importComponentByKeyAsync(key)` and `figma.importComponentSetByKeyAsync(key)` copy the component with that key, and the components it draws, into the document as a read-only library definition, at the revision `openpencil libraries update` makes from the same file, and return it; a key no library has fails with an error. Repeat `--library` for several libraries: a key is looked for in them in order, and each file is read only once a script imports from it.
+
+```sh
+openpencil eval screen.fig --library ui=design-system.fig --variables-by-name --write -c "
+  const button = await figma.importComponentByKeyAsync('button')
+  button.createInstance().name = 'Primary action'
+"
+```
+
+With `--variables-by-name`, the imported layers bind to the document's variables with the same names instead of the library's, so the document's tokens restyle them; the library variables the document has no namesake for are listed on stderr. Saving drops a library definition no instance uses, so place the instances in the script that imports them.
+
+When the library changes, `openpencil libraries update` brings the definitions a document holds to the revision its source file makes, in place, keeping each instance's overrides:
+
+```sh
+openpencil libraries update screen.fig --source design-system.fig --variables-by-name --write
+```
+
 ## Query nodes
 
 ```sh
@@ -215,6 +234,7 @@ The API is intentionally close to Figma's Plugin API, but it maps to OpenPencil'
 - `figma.combineAsVariants(components, parent)` — properties come from names such as `State=On, Size=Large`
 - On a component set, `addComponentProperty(name, 'VARIANT', value)` appends the value to every variant's name and `editComponentProperty(name, { name })` renames the property in them, which instances follow; renaming a variant updates the set's values, and `variantProperties` reads a variant's or an instance's values
 - `component.createInstance()`
+- `figma.importComponentByKeyAsync(key)` and `figma.importComponentSetByKeyAsync(key)`, from the libraries `eval --library` names (see [Library components](#library-components))
 - `instance.mainComponent`
 
 ### Variables
