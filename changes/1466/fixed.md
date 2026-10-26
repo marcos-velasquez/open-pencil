@@ -1,1 +1,1 @@
-- `openpencil convert` measures a `.pen` file's text in its own fonts, so converted tags and buttons keep their width.
+- `openpencil convert` measures the text of a `.pen` or draw.io file in its own fonts, so converted tags, buttons and labels keep their width.

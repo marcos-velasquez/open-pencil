@@ -6,9 +6,8 @@ import { join } from 'node:path'
 import { CLI_ENTRY } from '#cli-tests/helpers/paths'
 
 import { getTextMeasurer } from '@open-pencil/core/layout'
-import { prepareGraphFonts } from '@open-pencil/core/text'
 
-import { loadDocument, measureTextHeadlessly } from '#cli/headless'
+import { loadDocument, measureDocumentText } from '#cli/headless'
 
 setDefaultTimeout(60_000)
 
@@ -56,11 +55,7 @@ describe('convert CLI', () => {
     const graph = await loadDocument(output)
     const label = [...graph.getAllNodes()].find((node) => node.type === 'TEXT')
     if (!label) throw new Error('Expected the label')
-    await measureTextHeadlessly()
-    await prepareGraphFonts(
-      graph,
-      graph.getPages(true).map((page) => page.id)
-    )
+    await measureDocumentText(graph)
     const measured = getTextMeasurer()?.(label)
     if (!measured) throw new Error('Expected the label measured in its font')
     expect(label.width).toBeCloseTo(measured.width, 0)

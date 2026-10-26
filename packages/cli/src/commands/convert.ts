@@ -5,12 +5,11 @@ import { defineCommand } from 'citty'
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { layoutAuthoredNodes } from '@open-pencil/core/layout'
-import { prepareGraphFonts } from '@open-pencil/core/text'
 
 import { requireFile } from '#cli/app/client'
 import { FONT_POLICIES, reportFontStatus } from '#cli/commands/export/font-policy'
 import { ok, printError } from '#cli/format'
-import { loadDocument, measureTextHeadlessly, populateWholeDocument } from '#cli/headless'
+import { loadDocument, measureDocumentText, populateWholeDocument } from '#cli/headless'
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 
@@ -66,14 +65,15 @@ export default defineCommand({
     const file = requireFile(args.file)
     const graph = await loadDocument(file)
     populateWholeDocument(graph)
-    // A document that stores no layout, such as a .pen file, was laid out as it was read, with
-    // its text estimated. The output keeps those sizes, so lay it out again with its text
-    // measured in its own fonts, as the app and raster export draw it.
-    if (io.findReader(file)?.role !== 'native-document') {
-      await measureTextHeadlessly()
-      const pageIds = graph.getPages(true).map((page) => page.id)
-      reportFontStatus(await prepareGraphFonts(graph, pageIds), args['font-policy'])
-      layoutAuthoredNodes(graph, pageIds)
+    // A format that stores layout intent, such as .pen, was laid out as it was read, with its
+    // text estimated. The output keeps those sizes, so lay it out again with its text measured
+    // in its own fonts, as the app and raster export draw it.
+    if (io.findReader(file)?.laysOutOnRead) {
+      reportFontStatus(await measureDocumentText(graph), args['font-policy'])
+      layoutAuthoredNodes(
+        graph,
+        graph.getPages(true).map((page) => page.id)
+      )
     }
     const result = await io.writeDocument(format, graph)
     const output = args.output ? resolve(args.output) : defaultOutput(file, format)
