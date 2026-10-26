@@ -185,6 +185,7 @@ ja:menu.copyNodeId
 ja:menu.copyXPath
 ja:menu.exportSelectionAsFig
 ja:menu.exportSelectionAsPNG
+ja:menu.exportSelectionAsDrawIO
 ja:menu.exportSelectionAsPPTX
 ja:menu.exportSelectionAsSVG
 ja:menu.toggleUI
@@ -408,6 +409,7 @@ zh-cn:menu.copyNodeId
 zh-cn:menu.copyXPath
 zh-cn:menu.exportSelectionAsFig
 zh-cn:menu.exportSelectionAsPNG
+zh-cn:menu.exportSelectionAsDrawIO
 zh-cn:menu.exportSelectionAsPPTX
 zh-cn:menu.exportSelectionAsSVG
 zh-cn:panels.behaviourAddVariants
@@ -523,6 +525,7 @@ ja:cloudPortal.welcomeTitle
 ja:cloudPortal.accountId
 ja:cloudPortal.desktopApp
 ja:cloudPortal.methodDesktop
+ja:cloudPortal.pictureUnreadable
 zh-cn:cloud.connectHeading
 zh-cn:cloud.connectServerDescription
 zh-cn:cloud.officialDescription
@@ -544,6 +547,7 @@ zh-cn:cloudPortal.accountId
 zh-cn:cloudPortal.accountIdDescription
 zh-cn:cloudPortal.desktopApp
 zh-cn:cloudPortal.methodDesktop
+zh-cn:cloudPortal.pictureUnreadable
 ja:ai.cloudAIUnavailable
 ja:ai.cloudAINoWorkspace
 ja:ai.chatCloudCreditsExhausted

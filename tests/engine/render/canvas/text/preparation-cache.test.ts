@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import type { CanvasKit } from 'canvaskit-wasm'
 
 import { SceneGraph } from '@open-pencil/scene-graph'
+import { pixelLength } from '@open-pencil/scene-graph/text'
 
 import { initCanvasKit } from '#cli/headless'
 import { buildParagraph, nodeFontReadiness } from '#core/canvas/text'
@@ -62,7 +63,7 @@ describe('text preparation cache', () => {
     const f = await fixture(8)
     const data = await Bun.file('packages/core/assets/InterVariable.ttf').arrayBuffer()
     f.provider.registerFont(data, 'Inter')
-    fontManager.markLoaded('Inter', 'Regular', data)
+    await fontManager.markLoaded('Inter', 'Regular', data)
     let builds = 0
     const ck: CanvasKit = {
       ...f.ck,
@@ -252,8 +253,8 @@ describe('text preparation cache', () => {
         textLanguage: 'ar',
         textDirection: 'RTL',
         textCase: 'UPPER',
-        letterSpacing: 2,
-        lineHeight: 30,
+        letterSpacing: pixelLength(2),
+        lineHeight: pixelLength(30),
         textAlignHorizontal: 'CENTER',
         leadingTrim: 'CAP_HEIGHT',
         textDecoration: 'UNDERLINE',

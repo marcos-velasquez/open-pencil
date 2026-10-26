@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
 import { SceneGraph } from '@open-pencil/scene-graph'
+import { pixelLength } from '@open-pencil/scene-graph/text'
 
 import { pathTextEditChanges, resizedPathTextGlyphs } from '#core/editor/text/path-edit'
+import { getGlyphOutlineMetricsSync } from '#core/text/font/glyphs'
 import { fontManager } from '#core/text/fonts'
-import { getGlyphOutlineMetricsSync } from '#core/text/opentype'
 import { nearestArcPoint, pointAtArc, sampleTextPath, textPathStartArc } from '#core/text/path'
 
 import { expectDefined } from '#tests/helpers/assert'
@@ -26,7 +27,7 @@ describe('pathTextEditChanges — reflow on character edit', () => {
     const font = await fontManager.fetchBundledFont('/InterVariable.ttf')
     expect(font).toBeTruthy()
     if (!font) return
-    fontManager.markLoaded('Inter', 'Regular', font)
+    await fontManager.markLoaded('Inter', 'Regular', font)
 
     const graph = new SceneGraph()
     const page = expectDefined(graph.getPages()[0])
@@ -68,11 +69,11 @@ describe('pathTextEditChanges — reflow on character edit', () => {
     }
   })
 
-  test('uses opentype.js glyph positioning when the font supports its shaping pipeline', async () => {
+  test('positions glyphs as HarfBuzz shapes them', async () => {
     const font = await fontManager.fetchBundledFont('/InterVariable.ttf')
     expect(font).toBeTruthy()
     if (!font) return
-    fontManager.markLoaded('Inter', 'Regular', font)
+    await fontManager.markLoaded('Inter', 'Regular', font)
 
     const metrics = getGlyphOutlineMetricsSync('Inter', 'Regular', 'AV ffi', 40)
     expect(metrics).toBeTruthy()
@@ -86,7 +87,7 @@ describe('pathTextEditChanges — reflow on character edit', () => {
     const font = await fontManager.fetchBundledFont('/InterVariable.ttf')
     expect(font).toBeTruthy()
     if (!font) return
-    fontManager.markLoaded('Inter', 'Regular', font)
+    await fontManager.markLoaded('Inter', 'Regular', font)
 
     function lastGlyphX(letterSpacing: number): number {
       const graph = new SceneGraph()
@@ -102,7 +103,7 @@ describe('pathTextEditChanges — reflow on character edit', () => {
         fontWeight: 400,
         italic: false,
         fontSize: 40,
-        letterSpacing,
+        letterSpacing: pixelLength(letterSpacing),
         textPathBox: { ...box },
         derivedTextGlyphs: [
           { commandsBlob: new Uint8Array(4), x: 50, y: 50, fontSize: 40, rotation: 0 },
@@ -159,7 +160,7 @@ describe('pathTextEditChanges — reflow on character edit', () => {
     const font = await fontManager.fetchBundledFont('/InterVariable.ttf')
     expect(font).toBeTruthy()
     if (!font) return
-    fontManager.markLoaded('Inter', 'Regular', font)
+    await fontManager.markLoaded('Inter', 'Regular', font)
 
     const graph = new SceneGraph()
     const page = expectDefined(graph.getPages()[0])
@@ -201,7 +202,7 @@ describe('pathTextEditChanges — alignment', () => {
   async function alignedText(align: 'LEFT' | 'CENTER' | 'RIGHT', forward = true) {
     const font = await fontManager.fetchBundledFont('/InterVariable.ttf')
     if (!font) throw new Error('missing bundled font')
-    fontManager.markLoaded('Inter', 'Regular', font)
+    await fontManager.markLoaded('Inter', 'Regular', font)
     const graph = new SceneGraph()
     const page = expectDefined(graph.getPages()[0])
     const node = graph.createNode('TEXT', page.id, {
@@ -322,7 +323,7 @@ describe('aligned path text is laid out from the text path start, as in Figma', 
   async function edited(align: 'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFIED', forward = true) {
     const font = await fontManager.fetchBundledFont('/InterVariable.ttf')
     if (!font) throw new Error('bundled font missing')
-    fontManager.markLoaded('Inter', 'Regular', font)
+    await fontManager.markLoaded('Inter', 'Regular', font)
     const text = 'Hello'
     const width = expectDefined(getGlyphOutlineMetricsSync('Inter', 'Regular', text, 40)).reduce(
       (sum, glyph) => sum + glyph.advance,
@@ -385,7 +386,7 @@ describe('path text that overflows its alignment’s part of the path, as in Fig
   async function overflowing(align: 'LEFT' | 'CENTER' | 'RIGHT', tValue = 0.5) {
     const font = await fontManager.fetchBundledFont('/InterVariable.ttf')
     if (!font) throw new Error('bundled font missing')
-    fontManager.markLoaded('Inter', 'Regular', font)
+    await fontManager.markLoaded('Inter', 'Regular', font)
     const graph = new SceneGraph()
     const page = expectDefined(graph.getPages()[0])
     const node = graph.createNode('TEXT', page.id, {
@@ -466,7 +467,7 @@ describe('path text that overflows its alignment’s part of the path, as in Fig
 test('overflowing text on a closed path keeps what fits one loop', async () => {
   const font = await fontManager.fetchBundledFont('/InterVariable.ttf')
   if (!font) throw new Error('bundled font missing')
-  fontManager.markLoaded('Inter', 'Regular', font)
+  await fontManager.markLoaded('Inter', 'Regular', font)
   const graph = new SceneGraph()
   const page = expectDefined(graph.getPages()[0])
   const node = graph.createNode('TEXT', page.id, {
@@ -529,7 +530,7 @@ describe('resizedPathTextGlyphs — resize lays the text out again', () => {
   test('a squashed or stretched square keeps every letter on the path, in order', async () => {
     const font = await fontManager.fetchBundledFont('/InterVariable.ttf')
     if (!font) throw new Error('expected the bundled Inter font')
-    fontManager.markLoaded('Inter', 'Regular', font)
+    await fontManager.markLoaded('Inter', 'Regular', font)
 
     const corner = (x: number, y: number) => ({ x, y })
     const side = (start: number, end: number) => ({
