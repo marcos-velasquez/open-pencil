@@ -2,7 +2,6 @@ import { pick } from 'es-toolkit/object'
 import { isEqual } from 'es-toolkit/predicate'
 
 import { generateId, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
-import { CORNER_FIELDS, STROKE_FIELDS } from '@open-pencil/scene-graph/fields'
 import {
   detachInstance,
   INSTANCE_OVERRIDE_FIELDS,
@@ -11,8 +10,7 @@ import {
   swapInstanceComponent
 } from '@open-pencil/scene-graph/instances'
 
-import { applyPenProperties, createSceneNode, type Build } from './nodes'
-import { isLegacyStroke } from './paints'
+import { applyPenProperties, createSceneNode, fieldsSetBy, type Build } from './nodes'
 import type { PenNode, PenOverride } from './schema'
 
 /** Fills an instance read from `.pen`, after the instances inside its component. */
@@ -91,63 +89,6 @@ function replaceLayer(
     // The parent's layers changed; a replacement that is itself an instance stays one.
     if (id) build.replaced.add(parentId)
   })
-}
-
-const STROKE_WEIGHT_FIELDS = [
-  'strokeWeight',
-  'independentStrokeWeights',
-  'borderTopWeight',
-  'borderRightWeight',
-  'borderBottomWeight',
-  'borderLeftWeight'
-] as const
-
-/** The fields each pen.dev property writes, which a layer that sets the property owns. */
-const PROPERTY_FIELDS: Partial<Record<string, readonly (keyof SceneNode)[]>> = {
-  name: ['name'],
-  width: ['width'],
-  height: ['height'],
-  theme: ['variableModes'],
-  enabled: ['visible'],
-  opacity: ['opacity'],
-  fill: ['fills'],
-  stroke: ['strokes'],
-  strokeWidth: STROKE_WEIGHT_FIELDS,
-  strokeLinecap: ['strokeCap'],
-  strokeLinejoin: ['strokeJoin'],
-  strokeAlignment: ['strokeAlign'],
-  effect: ['effects'],
-  cornerRadius: CORNER_FIELDS,
-  layout: ['layoutMode'],
-  gap: ['itemSpacing'],
-  layoutIncludeStroke: ['strokesIncludedInLayout'],
-  padding: ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'],
-  justifyContent: ['primaryAxisAlign'],
-  alignItems: ['counterAxisAlign'],
-  clip: ['clipsContent'],
-  content: ['text'],
-  textGrowth: ['textAutoResize'],
-  fontFamily: ['fontFamily'],
-  fontSize: ['fontSize'],
-  fontWeight: ['fontWeight'],
-  fontStyle: ['italic'],
-  letterSpacing: ['letterSpacing'],
-  lineHeight: ['lineHeight'],
-  textAlign: ['textAlignHorizontal'],
-  textAlignVertical: ['textAlignVertical']
-}
-
-/**
- * The fields the properties `pen` carries write, whatever their values: pen.dev keeps a property
- * an instance sets even when it equals its component's, so a later change to the component does
- * not reach it.
- */
-function fieldsSetBy(pen: PenOverride): (keyof SceneNode)[] {
-  return Object.keys(pen).flatMap((key) =>
-    key === 'stroke' && isLegacyStroke(pen.stroke)
-      ? ['strokes' as const, ...STROKE_FIELDS]
-      : (PROPERTY_FIELDS[key] ?? [])
-  )
 }
 
 /**
