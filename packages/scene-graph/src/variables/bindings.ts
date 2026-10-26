@@ -162,6 +162,7 @@ export function resolvedPaintBindings(
   // Most nodes bind nothing, so no copy is made until a paint binding is actually found.
   const changes: Pick<Partial<SceneNode>, 'fills' | 'strokes'> = {}
   for (const field in node.boundVariables) {
+    if (!field.endsWith('/color')) continue
     const paint = paintBindingTarget(field)
     if (!paint) continue
     const color = graph.resolveColorVariableForNode(node.id, node.boundVariables[field], fallback)
