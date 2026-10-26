@@ -1,6 +1,9 @@
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import { findInstanceAncestor, recordInstanceOverride } from '@open-pencil/scene-graph/instances'
-import { setInstanceOverride } from '@open-pencil/scene-graph/instances/overrides'
+import {
+  getInstanceOverride,
+  setInstanceOverride
+} from '@open-pencil/scene-graph/instances/overrides'
 
 import { findLibraryDefinition } from './definitions'
 import type { ComponentLibraryRevision, LibraryAssetDescriptor } from './types'
@@ -79,18 +82,59 @@ export function planOutdatedLibraryInstances(
   return updates
 }
 
-/** A layer's place in an instance: the names down to it, each with its rank among namesakes. */
+/**
+ * The layer of the component that `node` draws: the one its instance records as its source, as a
+ * swap records it, else the one it copies. Its name is the library's, which neither a rename nor
+ * a swap in the document changes.
+ */
+function sourceLayer(graph: SceneGraph, rootId: string, node: SceneNode): SceneNode {
+  for (let id = node.parentId; id;) {
+    const owner = graph.getNode(id)
+    if (!owner) break
+    if (owner.type === 'INSTANCE') {
+      const recorded = getInstanceOverride(
+        owner.instanceOverrides,
+        owner.id,
+        node.id,
+        'sourceComponentId'
+      )
+      const source = typeof recorded === 'string' ? graph.getNode(recorded) : undefined
+      if (source) return source
+    }
+    if (id === rootId) break
+    id = owner.parentId
+  }
+  const copied = node.componentId ? graph.getNode(node.componentId) : undefined
+  return copied && copied.type !== 'COMPONENT' && copied.type !== 'COMPONENT_SET' ? copied : node
+}
+
+/**
+ * A layer's place in an instance: the names of the component layers down to it, each with its
+ * rank among namesakes.
+ */
 function layerPath(graph: SceneGraph, rootId: string, node: SceneNode): string {
+  const name = (layer: SceneNode) => sourceLayer(graph, rootId, layer).name
   const parts: string[] = []
   for (let id: string | null = node.id; id && id !== rootId;) {
     const layer = graph.getNode(id)
     if (!layer) break
-    const siblings = layer.parentId ? (graph.getNode(layer.parentId)?.childIds ?? []) : []
-    const namesakes = siblings.filter((siblingId) => graph.getNode(siblingId)?.name === layer.name)
-    parts.unshift(`${layer.name}#${namesakes.indexOf(layer.id)}`)
+    const siblings = (layer.parentId ? graph.getChildren(layer.parentId) : []).filter(
+      (sibling) => name(sibling) === name(layer)
+    )
+    parts.unshift(`${name(layer)}#${siblings.findIndex((sibling) => sibling.id === layer.id)}`)
     id = layer.parentId
   }
   return parts.join('/')
+}
+
+/** Drops the overrides an instance keeps for layers a swap removed. */
+function dropStaleOverrides(graph: SceneGraph, instanceId: string): void {
+  const instance = graph.getNode(instanceId)
+  if (!instance) return
+  for (const id of instance.instanceOverrides.descendants.keys()) {
+    if (!graph.getNode(id) || !graph.isDescendant(id, instanceId))
+      instance.instanceOverrides.descendants.delete(id)
+  }
 }
 
 interface CapturedOverride {
@@ -158,10 +202,11 @@ export function swapLibraryInstance(
 ): void {
   const captured = captureOverrides(graph, instanceId)
   graph.swapInstanceComponent(instanceId, componentId)
+  dropStaleOverrides(graph, instanceId)
   for (const entry of captured) {
+    if (!entry.componentId || !graph.getNode(entry.componentId)) continue
     const target = layersByPath(graph, instanceId).get(entry.path)
-    if (entry.componentId && target?.type === 'INSTANCE' && graph.getNode(entry.componentId))
-      graph.swapInstanceComponent(target.id, entry.componentId)
+    if (target?.type === 'INSTANCE') graph.swapInstanceComponent(target.id, entry.componentId)
   }
   const layers = layersByPath(graph, instanceId)
   for (const entry of captured) {
