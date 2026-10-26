@@ -101,6 +101,30 @@ describe('parsePenFile — instances', () => {
     expect(getNodeOrThrow(graph, 'tinted').fills[0]?.color).toMatchObject({ r: 0x11 / 255 })
   })
 
+  test("keeps a field the ref sets to its component's value when the component changes", () => {
+    const graph = parseDocument([
+      button,
+      {
+        id: 'same',
+        type: 'ref',
+        ref: 'button',
+        fill: '#2255CC',
+        descendants: { label: { content: 'Button' } }
+      }
+    ])
+    expect(hasInstanceOverride(graph, 'same', 'fills')).toBe(true)
+    expect(hasInstanceOverride(graph, copyOf(graph, 'same', 'label').id, 'text')).toBe(true)
+
+    graph.updateNode('button', {
+      fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }]
+    })
+    graph.updateNode('label', { text: 'Renamed' })
+    syncInstance(graph, 'same')
+
+    expect(getNodeOrThrow(graph, 'same').fills[0]?.color).toMatchObject({ r: 0x22 / 255 })
+    expect(copyOf(graph, 'same', 'label').text).toBe('Button')
+  })
+
   test('records a descendant override so a sync keeps it', () => {
     const graph = parseDocument([
       button,

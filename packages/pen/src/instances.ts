@@ -2,6 +2,7 @@ import { pick } from 'es-toolkit/object'
 import { isEqual } from 'es-toolkit/predicate'
 
 import { generateId, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
+import { CORNER_FIELDS, STROKE_FIELDS } from '@open-pencil/scene-graph/fields'
 import {
   INSTANCE_OVERRIDE_FIELDS,
   populateInstanceChildren,
@@ -9,6 +10,7 @@ import {
 } from '@open-pencil/scene-graph/instances'
 
 import { applyPenProperties, createSceneNode, type Build } from './nodes'
+import { isLegacyStroke } from './paints'
 import type { PenNode, PenOverride } from './schema'
 
 /** The layers a copy was made from, nearest first, through copies of copies. */
@@ -78,23 +80,81 @@ function replaceLayer(build: Build, target: SceneNode, replacement: PenOverride)
   })
 }
 
+const STROKE_WEIGHT_FIELDS = [
+  'strokeWeight',
+  'independentStrokeWeights',
+  'borderTopWeight',
+  'borderRightWeight',
+  'borderBottomWeight',
+  'borderLeftWeight'
+] as const
+
+/** The fields each pen.dev property writes, which a layer that sets the property owns. */
+const PROPERTY_FIELDS: Partial<Record<string, readonly (keyof SceneNode)[]>> = {
+  name: ['name'],
+  width: ['width'],
+  height: ['height'],
+  theme: ['variableModes'],
+  enabled: ['visible'],
+  opacity: ['opacity'],
+  fill: ['fills'],
+  stroke: ['strokes'],
+  strokeWidth: STROKE_WEIGHT_FIELDS,
+  strokeLinecap: ['strokeCap'],
+  strokeLinejoin: ['strokeJoin'],
+  strokeAlignment: ['strokeAlign'],
+  effect: ['effects'],
+  cornerRadius: CORNER_FIELDS,
+  layout: ['layoutMode'],
+  gap: ['itemSpacing'],
+  layoutIncludeStroke: ['strokesIncludedInLayout'],
+  padding: ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'],
+  justifyContent: ['primaryAxisAlign'],
+  alignItems: ['counterAxisAlign'],
+  clip: ['clipsContent'],
+  content: ['text'],
+  textGrowth: ['textAutoResize'],
+  fontFamily: ['fontFamily'],
+  fontSize: ['fontSize'],
+  fontWeight: ['fontWeight'],
+  fontStyle: ['italic'],
+  letterSpacing: ['letterSpacing'],
+  lineHeight: ['lineHeight'],
+  textAlign: ['textAlignHorizontal'],
+  textAlignVertical: ['textAlignVertical']
+}
+
 /**
- * Records as the instance's overrides the fields an override changed on a copy, so they survive
- * the instance's next sync and a save, as an edit made in the editor would.
+ * The fields the properties `pen` carries write, whatever their values: pen.dev keeps a property
+ * an instance sets even when it equals its component's, so a later change to the component does
+ * not reach it.
+ */
+function fieldsSetBy(pen: PenOverride): (keyof SceneNode)[] {
+  return Object.keys(pen).flatMap((key) =>
+    key === 'stroke' && isLegacyStroke(pen.stroke)
+      ? ['strokes' as const, ...STROKE_FIELDS]
+      : (PROPERTY_FIELDS[key] ?? [])
+  )
+}
+
+/**
+ * Records as the instance's overrides the fields an override set or changed on a copy, so they
+ * survive the instance's next sync and a save, as an edit made in the editor would.
  */
 function recordChangedFields(
   graph: SceneGraph,
   target: SceneNode,
-  before: Partial<SceneNode>
+  before: Partial<SceneNode>,
+  override: PenOverride
 ): void {
   const changed = INSTANCE_OVERRIDE_FIELDS.filter((field) => !isEqual(before[field], target[field]))
-  recordInstanceOverride(graph, target.id, changed)
+  recordInstanceOverride(graph, target.id, [...changed, ...fieldsSetBy(override)])
 }
 
 /**
- * Records as the instance's own overrides the fields its `ref` set apart from its component's.
- * A size counts only when the `ref` sets it: otherwise it is the layout's, which follows the
- * component's.
+ * Records as the instance's own overrides the fields its `ref` sets or makes differ from its
+ * component's. A size counts only when the `ref` sets it: otherwise it is the layout's, which
+ * follows the component's.
  */
 function recordOwnFields(graph: SceneGraph, instance: SceneNode, ref: PenNode): void {
   const component = instance.componentId ? graph.getNode(instance.componentId) : undefined
@@ -105,7 +165,7 @@ function recordOwnFields(graph: SceneGraph, instance: SceneNode, ref: PenNode): 
       (field !== 'height' || 'height' in ref) &&
       !isEqual(instance[field], component[field])
   )
-  recordInstanceOverride(graph, instance.id, changed)
+  recordInstanceOverride(graph, instance.id, [...changed, ...fieldsSetBy(ref)])
 }
 
 function overrideLayer(build: Build, target: SceneNode, override: PenOverride): void {
@@ -118,7 +178,7 @@ function overrideLayer(build: Build, target: SceneNode, override: PenOverride): 
     const leave = merged.theme ? ctx.enterTheme(merged.theme) : undefined
     try {
       applyPenProperties(target, merged, build)
-      recordChangedFields(graph, target, before)
+      recordChangedFields(graph, target, before, fields)
       if (children) {
         const replaced = target.childIds
         for (const childId of replaced) graph.deleteNode(childId)
