@@ -189,19 +189,51 @@ describe('node variable bindings', () => {
   })
 
   test('shows and unbinds by corner a uniform radius a file binds as one field', () => {
-    const { api, size } = tokens()
+    const { api, mode, size } = tokens()
     const rect = api.createRectangle()
-    const corners = ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']
+    const corners = [
+      'topLeftRadius',
+      'topRightRadius',
+      'bottomLeftRadius',
+      'bottomRightRadius'
+    ] as const
+    // `api.mixed` widens to `symbol`, so the radii are typed to hold either.
+    const radii = (): (number | symbol)[] => [
+      rect.cornerRadius,
+      ...corners.map((corner) => rect[corner])
+    ]
     // A .pen or .fig file binds a uniform radius as one field.
     api.graph.bindVariable(rect.id, 'cornerRadius', size.id)
-    expect(Object.keys(rect.boundVariables)).toEqual(corners)
+    size.setValueForMode(mode, 6)
+    expect(Object.keys(rect.boundVariables)).toEqual([...corners])
 
+    // An unbound corner keeps the radius it shows, and the others follow the variable.
     rect.setBoundVariable('topLeftRadius', null)
     expect(Object.keys(rect.boundVariables)).toEqual(corners.slice(1))
-    for (const corner of corners.slice(1)) rect.setBoundVariable(corner as 'topRightRadius', null)
+    expect(radii()).toEqual([6, 6, 6, 6, 6])
+    size.setValueForMode(mode, 10)
+    expect(radii()).toEqual([api.mixed, 6, 10, 10, 10])
+
+    for (const corner of corners.slice(1)) rect.setBoundVariable(corner, null)
     rect.cornerRadius = 20
     expect(api.graph.getNode(rect.id)?.boundVariables).toEqual({})
-    expect(rect.cornerRadius).toBe(20)
+    expect(radii()).toEqual([20, 20, 20, 20, 20])
+  })
+
+  test('a radius bound as a whole is drawn at the variable’s value', () => {
+    const { api, mode, size } = tokens()
+    const rect = api.createRectangle()
+    rect.setBoundVariable('cornerRadius', size)
+    size.setValueForMode(mode, 10)
+    expect(rect.cornerRadius).toBe(10)
+    // The layer draws its corners, which hold the bound value, not a radius left at 0.
+    expect(api.graph.getNode(rect.id)).toMatchObject({
+      independentCorners: true,
+      topLeftRadius: 10,
+      topRightRadius: 10,
+      bottomLeftRadius: 10,
+      bottomRightRadius: 10
+    })
   })
 
   test('setBoundVariable takes only the type Figma’s API allows for each field', () => {

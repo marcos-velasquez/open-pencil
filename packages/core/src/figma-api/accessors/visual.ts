@@ -251,8 +251,13 @@ export function installVisualNodeProxyAccessors(
     cornerRadius: {
       get(this: ProxyThis): number | symbol {
         const node = raw(this, internals)
-        if (node.independentCorners) return mixed
-        return node.cornerRadius
+        if (!node.independentCorners) return node.cornerRadius
+        // Corners set or bound one by one read as one radius while they agree, as in Figma.
+        const { topLeftRadius, topRightRadius, bottomLeftRadius, bottomRightRadius } = node
+        const agree = [topRightRadius, bottomLeftRadius, bottomRightRadius].every(
+          (radius) => radius === topLeftRadius
+        )
+        return agree ? topLeftRadius : mixed
       },
       set(this: ProxyThis, value: number | symbol) {
         if (value === mixed) return

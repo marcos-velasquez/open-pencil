@@ -139,10 +139,21 @@ const isCornerField = (field: string): boolean =>
   field === 'cornerRadius' || (CORNER_FIELDS as readonly string[]).includes(field)
 
 /**
- * Binds a uniform radius corner by corner, as scripts bind it, when the document binds it as one
- * field, as a .pen or .fig file does, so a script can change or unbind each corner.
+ * Keeps a radius corner by corner before a script binds or unbinds one, as Figma keeps it: each
+ * corner takes the radius the layer shows and is drawn on its own, and a uniform binding a .pen or
+ * .fig file holds as one field becomes a binding per corner, so each can change or be unbound.
  */
-function splitUniformRadius(graph: SceneGraph, node: SceneNode): void {
+function separateCorners(graph: SceneGraph, node: SceneNode): void {
+  if (!node.independentCorners) {
+    const radius = node.cornerRadius
+    graph.updateNode(node.id, {
+      topLeftRadius: radius,
+      topRightRadius: radius,
+      bottomLeftRadius: radius,
+      bottomRightRadius: radius,
+      independentCorners: true
+    })
+  }
   const id = node.boundVariables.cornerRadius
   if (!id) return
   graph.unbindVariable(node.id, 'cornerRadius')
@@ -161,7 +172,7 @@ export function setLayerBinding(
   field: FigmaBindableNodeField,
   variable: Variable | null
 ): void {
-  if (isCornerField(field)) splitUniformRadius(graph, node)
+  if (isCornerField(field)) separateCorners(graph, node)
   for (const name of documentFields(field)) {
     if (variable) graph.bindVariable(node.id, name, variable.id)
     else graph.unbindVariable(node.id, name)

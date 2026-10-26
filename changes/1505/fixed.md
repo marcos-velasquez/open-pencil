@@ -1,1 +1,0 @@
-- Scripts see a uniform corner radius a file binds to a variable, and can unbind it corner by corner.
