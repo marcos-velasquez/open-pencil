@@ -202,4 +202,27 @@ describe('library definition updates', () => {
     expect(asset(definition?.componentPropertyDefinitions[0]?.defaultValue)).toBe('star')
     expect(asset(inserted?.componentPropertyAssignments.icon)).toBe('heart')
   })
+
+  test('brings in the images a revision adds', async () => {
+    const source = library()
+    const doc = await document(source.graph)
+    const hash = 'a'.repeat(40)
+    source.graph.images.set(hash, new Uint8Array([1, 2, 3]))
+    source.graph.updateNode(source.button.id, {
+      fills: [
+        {
+          type: 'IMAGE',
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          imageHash: hash,
+          imageScaleMode: 'FILL',
+          opacity: 1,
+          visible: true
+        }
+      ]
+    })
+    updateLibraryDefinitions(doc.graph, await revisionOf(source.graph))
+
+    expect(doc.graph.getNode(doc.componentId)?.fills[0]?.imageHash).toBe(hash)
+    expect(doc.graph.images.get(hash)).toEqual(new Uint8Array([1, 2, 3]))
+  })
 })

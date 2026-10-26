@@ -112,7 +112,11 @@ function markDefinitions(
   }
 }
 
-function copyImages(source: SceneGraph, target: SceneGraph, mappedIds: Map<string, string>): void {
+export function copyImages(
+  source: SceneGraph,
+  target: SceneGraph,
+  mappedIds: Map<string, string>
+): void {
   const hashes = new Set<string>()
   for (const sourceId of mappedIds.keys()) {
     const node = source.getNode(sourceId)
