@@ -18,6 +18,8 @@ import type { ComponentLibraryRevision } from './types'
 export interface LibraryDefinitionUpdateOptions {
   /** The document's variable for a variable of the revision; the revision's own by default. */
   variable?: (id: string) => string
+  /** The assets whose definitions to redraw; every definition of the library by default. */
+  assetKeys?: ReadonlySet<string>
 }
 
 export interface LibraryDefinitionUpdate {
@@ -163,19 +165,24 @@ function pairLayers(
  * layers and fields but keeps its layers' IDs, so its instances, the copies of those inside other
  * components, and all their overrides keep pointing at it. Its instances then sync in the order
  * the editor syncs an edited component. A definition the revision draws as another kind of layer
- * stays as it was, for its instances to swap.
+ * stays as it was and is reported. With `assetKeys` only those assets' definitions are redrawn,
+ * and the document moves to the revision once none of its definitions is left behind.
  */
 export function updateLibraryDefinitions(
   graph: SceneGraph,
   revision: ComponentLibraryRevision,
-  { variable = (id) => id }: LibraryDefinitionUpdateOptions = {}
+  { variable = (id) => id, assetKeys }: LibraryDefinitionUpdateOptions = {}
 ): LibraryDefinitionUpdate {
   const { libraryId, revisionId } = revision.manifest
   const result: LibraryDefinitionUpdate = { updated: [], replaced: [], missing: [] }
   const pairs: DefinitionPair[] = []
   const removed: string[] = []
-  for (const root of outdatedDefinitionRoots(graph, libraryId, revisionId)) {
-    const key = root.librarySource?.identity.assetKey ?? root.id
+  const assetOf = (root: SceneNode) => root.librarySource?.identity.assetKey ?? root.id
+  const outdated = outdatedDefinitionRoots(graph, libraryId, revisionId)
+  const left = assetKeys ? outdated.filter((root) => !assetKeys.has(assetOf(root))) : []
+  for (const root of outdated) {
+    if (left.includes(root)) continue
+    const key = assetOf(root)
     const source = revisionRoot(revision, root)
     if (!source) {
       result.missing.push(key)
@@ -291,7 +298,9 @@ export function updateLibraryDefinitions(
     graph,
     new Map(pairs.map(({ source, target }) => [source.id, target.id]))
   )
-  graph.enabledLibraries.set(libraryId, { libraryId, revisionId, enabled: true })
+  // The document uses the revision once no definition it holds is left behind.
+  if (left.length === 0)
+    graph.enabledLibraries.set(libraryId, { libraryId, revisionId, enabled: true })
   const components = pairs.flatMap(({ target }) => (target.type === 'COMPONENT' ? [target.id] : []))
   graph.syncInstancesTogether(componentSyncOrder(graph, new Set(components)))
   return result

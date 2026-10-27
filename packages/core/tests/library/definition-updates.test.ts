@@ -221,6 +221,33 @@ describe('library definition updates', () => {
     expect(asset(inserted?.componentPropertyAssignments.icon)).toBe('heart')
   })
 
+  test('redraws only the assets asked for, moving the document to the revision once none is behind', async () => {
+    const source = library()
+    const doc = await document(source.graph)
+    const first = doc.graph.enabledLibraries.get('design-system')?.revisionId
+    source.graph.updateNode(source.button.id, { cornerRadius: 12 })
+    source.graph.updateNode(layer(source.graph, source.icon.id, 'Glyph').id, { width: 20 })
+    const revision = await revisionOf(source.graph)
+    const definitionOf = (key: string) =>
+      [...doc.graph.getAllNodes()].find(
+        (node) => node.librarySource?.identity.assetKey === key && node.type === 'COMPONENT'
+      )
+    const iconBefore = definitionOf('icon')
+
+    const partial = updateLibraryDefinitions(doc.graph, revision, {
+      assetKeys: new Set(['button'])
+    })
+    expect(partial.updated).toEqual(['button'])
+    expect(doc.graph.getNode(doc.componentId)?.cornerRadius).toBe(12)
+    expect(iconBefore?.librarySource?.identity.revisionId).toBe(first)
+    expect(doc.graph.enabledLibraries.get('design-system')?.revisionId).toBe(first)
+
+    updateLibraryDefinitions(doc.graph, revision)
+    expect(doc.graph.enabledLibraries.get('design-system')?.revisionId).toBe(
+      revision.manifest.revisionId
+    )
+  })
+
   describe('variants', () => {
     /** A library whose chip set has a Default and a Hover variant, neither of them keyed. */
     function chips() {
