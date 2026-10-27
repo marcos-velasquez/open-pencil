@@ -16,6 +16,7 @@ import {
   writeSourceLibraryPublication,
   type ComponentLibraryRevision,
   type LibraryCatalog,
+  type LibraryDefinitionUpdate,
   type LibrarySummary,
   type LibraryUpdateImpact,
   type LibraryUpdateSummary,
@@ -353,8 +354,10 @@ export class LibraryService implements ComponentCatalog {
     if (updates.length === 0) return
     const before = captureGraphCheckpoint(editor.graph)
     editor.updateEnabledLibraries(() => {
-      for (const { revision, assetKeys } of updates)
-        updateLibraryDefinitions(editor.graph, revision, { assetKeys })
+      for (const { revision, assetKeys } of updates) {
+        const update = updateLibraryDefinitions(editor.graph, revision, { assetKeys })
+        if (update.replaced.length > 0) this.#replaceDefinitions(editor, revision, update)
+      }
     })
     const after = captureGraphCheckpoint(editor.graph)
     editor.requestRender()
@@ -366,23 +369,44 @@ export class LibraryService implements ComponentCatalog {
     await this.refresh(editor)
   }
 
+  /**
+   * Moves the instances of the assets a revision draws as another kind of layer, whose definitions
+   * cannot be redrawn in place, to a copy of the revision's, as updating instance by instance does.
+   * The document stays on its revision while the update leaves other definitions behind.
+   */
+  #replaceDefinitions(
+    editor: EditorStore,
+    revision: ComponentLibraryRevision,
+    { replaced, behind }: LibraryDefinitionUpdate
+  ): void {
+    const { libraryId } = revision.manifest
+    const binding = editor.graph.enabledLibraries.get(libraryId)
+    for (const assetKey of replaced) materializeLibraryAsset(editor.graph, revision, assetKey)
+    this.#swap(editor, planOutdatedLibraryInstances(editor.graph, revision, new Set(replaced)))
+    if (behind.length > 0 && binding) editor.graph.enabledLibraries.set(libraryId, binding)
+  }
+
+  #swap(editor: EditorStore, swaps: { instanceId: string; componentId: string }[]): void {
+    for (const { instanceId, componentId } of swaps) {
+      editor.graph.swapInstanceComponent(instanceId, componentId)
+      reapplyInstanceComponentProperties(editor, instanceId)
+    }
+  }
+
   #applyPlans(
     editor: EditorStore,
     plans: ReturnType<typeof planOutdatedLibraryInstances>,
     label: string
   ): void {
     const apply = () => {
-      for (const plan of plans) {
-        editor.graph.swapInstanceComponent(plan.instanceId, plan.componentId)
-        reapplyInstanceComponentProperties(editor, plan.instanceId)
-      }
+      this.#swap(editor, plans)
       editor.requestRender()
     }
     const restore = () => {
-      for (const plan of plans) {
-        editor.graph.swapInstanceComponent(plan.instanceId, plan.previousComponentId)
-        reapplyInstanceComponentProperties(editor, plan.instanceId)
-      }
+      this.#swap(
+        editor,
+        plans.map((plan) => ({ instanceId: plan.instanceId, componentId: plan.previousComponentId }))
+      )
       editor.requestRender()
     }
     apply()

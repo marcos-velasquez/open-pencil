@@ -238,6 +238,7 @@ describe('library definition updates', () => {
       assetKeys: new Set(['button'])
     })
     expect(partial.updated).toEqual(['button'])
+    expect(partial.behind).toEqual(['icon'])
     expect(doc.graph.getNode(doc.componentId)?.cornerRadius).toBe(12)
     expect(iconBefore?.librarySource?.identity.revisionId).toBe(first)
     expect(doc.graph.enabledLibraries.get('design-system')?.revisionId).toBe(first)
@@ -278,6 +279,23 @@ describe('library definition updates', () => {
       expect(layer(doc.graph, icon ?? '', 'Glyph').width).toBe(20)
     }
   )
+
+  test('keeps the document on its revision while the revision draws a definition as another kind of layer', async () => {
+    const source = library()
+    const doc = await document(source.graph)
+    const first = doc.graph.enabledLibraries.get('design-system')?.revisionId
+    // The library turns its icon into the one variant of a set.
+    const set = source.graph.createNode('COMPONENT_SET', source.page.id, {
+      name: 'Icon',
+      componentKey: 'icon'
+    })
+    source.graph.updateNode(source.icon.id, { name: 'Size=Large', componentKey: 'icon-large' })
+    source.graph.insertChildAt(source.icon.id, set.id, 0)
+
+    const result = updateLibraryDefinitions(doc.graph, await revisionOf(source.graph))
+    expect(result.replaced).toEqual(['icon'])
+    expect(doc.graph.enabledLibraries.get('design-system')?.revisionId).toBe(first)
+  })
 
   describe('variants', () => {
     /** A library whose chip set has a Default and a Hover variant, neither of them keyed. */

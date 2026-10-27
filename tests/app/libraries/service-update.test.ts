@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { materializeLibraryAsset, MemoryLibraryCatalog } from '@open-pencil/core/library'
-import { SceneGraph } from '@open-pencil/scene-graph'
+import { SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 import { recordInstanceOverride } from '@open-pencil/scene-graph/instances'
 
 import { createEditorStore } from '@/app/editor/session'
@@ -18,11 +18,18 @@ function source(width: number, label: string) {
   return graph
 }
 
+/** The library widens its button, relabels it and adds a badge. */
+function widen(library: SceneGraph, button: SceneNode) {
+  library.updateNode(button.id, { width: 120 })
+  library.updateNode(library.getChildren(button.id)[0]?.id ?? '', { text: 'New' })
+  library.createNode('TEXT', button.id, { name: 'Badge', text: '1' })
+}
+
 /**
  * A document holding an overridden instance of a library button, with a newer revision published
- * that widens the button, relabels it and adds a badge.
+ * that makes the changes `revise` makes.
  */
-async function updatable() {
+async function updatable(revise: (library: SceneGraph, button: SceneNode) => void = widen) {
   const library = source(80, 'Old')
   const catalog = new MemoryLibraryCatalog()
   const first = await catalog.publishRevision({
@@ -33,10 +40,8 @@ async function updatable() {
   })
   const button = [...library.getAllNodes()].find((node) => node.componentKey === 'button')
   if (!button) throw new Error('Expected the button')
-  library.updateNode(button.id, { width: 120 })
-  library.updateNode(library.getChildren(button.id)[0]?.id ?? '', { text: 'New' })
-  library.createNode('TEXT', button.id, { name: 'Badge', text: '1' })
-  await catalog.publishRevision({
+  revise(library, button)
+  const latest = await catalog.publishRevision({
     libraryId: 'library',
     name: 'Library',
     graph: library,
@@ -54,7 +59,7 @@ async function updatable() {
   const service = new LibraryService(catalog)
   await service.listLibraries()
   await service.refresh(editor)
-  return { graph, instance, componentId, editor, service }
+  return { graph, instance, componentId, editor, service, latest: latest.manifest.revisionId }
 }
 
 describe('library service updates', () => {
@@ -92,6 +97,28 @@ describe('library service updates', () => {
     expect(badges()).toEqual([])
     editor.undo.redo()
     expect(badges()).toEqual(added)
+  })
+
+  test('moves the instances of a button the library turns into a set of variants', async () => {
+    const { graph, instance, componentId, editor, service, latest } = await updatable(
+      (library, button) => {
+        const set = library.createNode('COMPONENT_SET', library.getPages()[0].id, {
+          name: 'Button',
+          componentKey: 'button'
+        })
+        library.updateNode(button.id, { name: 'Size=Large', componentKey: 'button-large' })
+        library.insertChildAt(button.id, set.id, 0)
+      }
+    )
+
+    await service.applyUpdate(editor, 'library')
+    const moved = graph.getNode(graph.getNode(instance.id)?.componentId ?? '')
+    expect(moved?.name).toBe('Size=Large')
+    expect(moved?.librarySource?.identity.revisionId).toBe(latest)
+    expect(graph.enabledLibraries.get('library')?.revisionId).toBe(latest)
+
+    editor.undo.undo()
+    expect(graph.getNode(instance.id)?.componentId).toBe(componentId)
   })
 
   test('leaves no step to undo when the library has no update left', async () => {

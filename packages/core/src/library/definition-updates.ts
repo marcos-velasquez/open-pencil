@@ -29,6 +29,8 @@ export interface LibraryDefinitionUpdate {
   replaced: string[]
   /** Asset keys the revision no longer has. */
   missing: string[]
+  /** Asset keys whose definitions stay at an earlier revision, as `assetKeys` leaves them out. */
+  behind: string[]
 }
 
 /** A document layer and the revision layer it draws, with the tree both belong to. */
@@ -196,7 +198,7 @@ function pairDefinitions(
   roots: SceneNode[],
   pairs: DefinitionPair[]
 ): { result: LibraryDefinitionUpdate; removed: string[] } {
-  const result: LibraryDefinitionUpdate = { updated: [], replaced: [], missing: [] }
+  const result: LibraryDefinitionUpdate = { updated: [], replaced: [], missing: [], behind: [] }
   const removed: string[] = []
   for (const root of roots) {
     const key = assetOf(root)
@@ -218,11 +220,11 @@ function pairDefinitions(
  * layers and fields but keeps its layers' IDs, so its instances, the copies of those inside other
  * components, and all their overrides keep pointing at it. Its instances then sync in the order
  * the editor syncs an edited component. A definition the revision draws as another kind of layer
- * stays as it was and is reported. With `assetKeys` only those assets' definitions are redrawn,
- * and the document moves to the revision once none of its definitions is left behind. A redrawn
- * definition draws the components it uses from the definitions already in the document, so a
- * nested instance keeps the definition, and the overrides, it had; only a component, or a layer
- * of one, that none of them holds is copied in.
+ * stays as it was and is reported, for the caller to move its instances. With `assetKeys` only
+ * those assets' definitions are redrawn. The document moves to the revision once none of its
+ * definitions is left behind or replaced. A redrawn definition draws the components it uses from
+ * the definitions already in the document, so a nested instance keeps the definition, and the
+ * overrides, it had; only a component, or a layer of one, that none of them holds is copied in.
  */
 export function updateLibraryDefinitions(
   graph: SceneGraph,
@@ -237,6 +239,7 @@ export function updateLibraryDefinitions(
   )
   const redrawn = assetKeys ? outdated.filter((root) => assetKeys.has(assetOf(root))) : outdated
   const { result, removed } = pairDefinitions(graph, revision, redrawn, pairs)
+  result.behind = outdated.filter((root) => !redrawn.includes(root)).map(assetOf)
 
   // A document can hold several copies of a definition, so each revision layer can have several.
   const copies = new Map<string, string[]>()
@@ -349,7 +352,7 @@ export function updateLibraryDefinitions(
     new Map(pairs.map(({ source, target }) => [source.id, target.id]))
   )
   // The document uses the revision once no definition it holds is left behind.
-  if (redrawn.length === outdated.length)
+  if (result.behind.length === 0 && result.replaced.length === 0)
     graph.enabledLibraries.set(libraryId, { libraryId, revisionId, enabled: true })
   const components = pairs.flatMap(({ target }) => (target.type === 'COMPONENT' ? [target.id] : []))
   graph.syncInstancesTogether(componentSyncOrder(graph, new Set(components)))
