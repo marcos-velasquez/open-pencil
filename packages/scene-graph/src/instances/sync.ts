@@ -243,15 +243,28 @@ function childBindingProtection(
   return (field: string) => protectedField(field) || ownsSelfFillField(child, field)
 }
 
+/** Links a copy to the component layer it matched, reporting each node it writes into first. */
 function linkMatchedChild(
-  overrides: InstanceOverrideState,
+  graph: SceneGraph,
+  context: InstanceSyncContext,
   instParentId: string,
   instChild: SceneNode,
   compChildId: string
 ): void {
-  if (instChild.type === 'INSTANCE') {
+  const { overrides } = context
+  // A recorded link outranks `componentId`, so one a file recorded must follow the match too.
+  const recorded = hasNodeInstanceOverride(
+    overrides,
+    instParentId,
+    instChild.id,
+    'sourceComponentId'
+  )
+  if (instChild.type === 'INSTANCE' || recorded) {
+    graph.willChangeNode(graph.nodes.get(context.instanceId))
     setInstanceOverride(overrides, instParentId, instChild.id, 'sourceComponentId', compChildId)
-  } else {
+  }
+  if (instChild.type !== 'INSTANCE') {
+    graph.willChangeNode(instChild)
     instChild.componentId = compChildId
   }
 }
@@ -261,7 +274,7 @@ function matchFallbackChildren(
   compParent: SceneNode,
   instParent: SceneNode,
   instParentId: string,
-  overrides: InstanceOverrideState,
+  context: InstanceSyncContext,
   instChildMap: Map<string, SceneNode>,
   usedInstChildIds: Set<string>
 ): void {
@@ -302,7 +315,7 @@ function matchFallbackChildren(
     remainingCandidateCount.set(compChild.type, candidateCount - 1)
     instChildMap.set(compChildId, match)
     usedInstChildIds.add(match.id)
-    linkMatchedChild(overrides, instParentId, match, compChildId)
+    linkMatchedChild(graph, context, instParentId, match, compChildId)
   }
 }
 
@@ -438,7 +451,7 @@ export function syncChildren(
     compParent,
     instParent,
     instParentId,
-    overrides,
+    context,
     instChildMap,
     usedInstChildIds
   )
