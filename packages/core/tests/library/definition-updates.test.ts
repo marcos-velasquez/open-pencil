@@ -248,6 +248,37 @@ describe('library definition updates', () => {
     )
   })
 
+  test.each([
+    ['button', 'icon'],
+    ['icon', 'button']
+  ])(
+    'keeps one definition of the icon the button draws, updating the %s and then the %s',
+    async (first: string, then: string) => {
+      const source = library()
+      const doc = await document(source.graph)
+      source.graph.updateNode(source.button.id, { cornerRadius: 12 })
+      source.graph.updateNode(layer(source.graph, source.icon.id, 'Glyph').id, { width: 20 })
+      const revision = await revisionOf(source.graph)
+      const icons = () =>
+        [...doc.graph.getAllNodes()]
+          .filter(
+            (node) => node.type === 'COMPONENT' && node.librarySource?.identity.assetKey === 'icon'
+          )
+          .map((node) => node.id)
+      const [icon] = icons()
+      const drawn = () =>
+        doc.graph.getChildren(doc.componentId).find((node) => node.type === 'INSTANCE')
+          ?.componentId
+
+      for (const assetKey of [first, then]) {
+        updateLibraryDefinitions(doc.graph, revision, { assetKeys: new Set([assetKey]) })
+        expect(icons()).toEqual([icon])
+        expect(drawn()).toBe(icon)
+      }
+      expect(layer(doc.graph, icon ?? '', 'Glyph').width).toBe(20)
+    }
+  )
+
   describe('variants', () => {
     /** A library whose chip set has a Default and a Hover variant, neither of them keyed. */
     function chips() {

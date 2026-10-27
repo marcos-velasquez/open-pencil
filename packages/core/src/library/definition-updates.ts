@@ -39,19 +39,12 @@ interface DefinitionPair {
   tree: Map<string, string>
 }
 
-function outdatedDefinitionRoots(
-  graph: SceneGraph,
-  libraryId: string,
-  revisionId: string
-): SceneNode[] {
+function definitionRoots(graph: SceneGraph, libraryId: string): SceneNode[] {
   return graph
     .getPages(true)
     .filter((page) => page.internalOnly)
     .flatMap((page) => graph.getChildren(page.id))
-    .filter((node) => {
-      const identity = node.librarySource?.identity
-      return identity?.libraryId === libraryId && identity.revisionId !== revisionId
-    })
+    .filter((node) => node.librarySource?.identity.libraryId === libraryId)
 }
 
 /** The revision layer a definition draws: its asset's, or the layer it was copied from. */
@@ -78,7 +71,6 @@ function revisionDefinitionRoot(
   return root
 }
 
-/** What pairs a layer across revisions: a variant's key, which a rename keeps, or its kind and name. */
 /** What pairs a layer copied before definitions recorded their library layer: its kind and name. */
 const layerKey = (node: SceneNode) => `${node.type}:${node.name}`
 
@@ -113,22 +105,17 @@ function copyTree(
 }
 
 /**
- * Pairs the layers of `target` with those of the revision layer `source`, as a library update
- * finds the layer an override names: by the library layer each copies. A layer copied before
- * definitions recorded it pairs by kind and name only when that names one layer on each side, so
- * an ambiguous or renamed one is never guessed. A revision layer left without a pair is copied in;
- * the layers left without one are returned for removal, and their overrides go with them.
+ * Pairs each child of the revision layer `source` with the layer of `target` that draws it, as a
+ * library update finds the layer an override names: by the library layer each copies. A layer
+ * copied before definitions recorded it pairs by kind and name only when that names one layer on
+ * each side, so an ambiguous or renamed one is never guessed.
  */
-function pairLayers(
+function matchChildren(
   graph: SceneGraph,
   revision: ComponentLibraryRevision,
   source: SceneNode,
-  target: SceneNode,
-  tree: Map<string, string>,
-  pairs: DefinitionPair[]
-): string[] {
-  tree.set(source.id, target.id)
-  pairs.push({ source, target, tree })
+  target: SceneNode
+): (readonly [SceneNode, SceneNode | undefined])[] {
   const layers = graph.getChildren(target.id)
   const byLibraryLayer = new Map(
     layers.flatMap((layer) =>
@@ -146,12 +133,36 @@ function pairLayers(
   )
   const namesakes = countBy(children, layerKey)
   const paired = new Set<SceneNode>()
-  const removed: string[] = []
-  for (const child of children) {
+  return children.map((child) => {
     let pair = child.libraryLayerId ? byLibraryLayer.get(child.libraryLayerId) : undefined
     const byName = unrecorded.get(layerKey(child))
     if (!pair && byName?.length === 1 && namesakes[layerKey(child)] === 1) pair = byName[0]
-    if (pair && !paired.has(pair)) {
+    if (!pair || paired.has(pair)) return [child, undefined] as const
+    paired.add(pair)
+    return [child, pair] as const
+  })
+}
+
+/**
+ * Pairs the layers of `target` with those of the revision layer `source`. A revision layer left
+ * without a pair is copied in; the layers left without one are returned for removal, and their
+ * overrides go with them.
+ */
+function pairLayers(
+  graph: SceneGraph,
+  revision: ComponentLibraryRevision,
+  source: SceneNode,
+  target: SceneNode,
+  tree: Map<string, string>,
+  pairs: DefinitionPair[]
+): string[] {
+  tree.set(source.id, target.id)
+  pairs.push({ source, target, tree })
+  const layers = graph.getChildren(target.id)
+  const paired = new Set<SceneNode>()
+  const removed: string[] = []
+  for (const [child, pair] of matchChildren(graph, revision, source, target)) {
+    if (pair) {
       paired.add(pair)
       removed.push(...pairLayers(graph, revision, child, pair, tree, pairs))
     } else copyTree(graph, revision, child.id, target.id, tree, pairs)
@@ -160,28 +171,34 @@ function pairLayers(
   return removed
 }
 
-/**
- * Brings a document's definitions of a library to a revision in place: each takes the revision's
- * layers and fields but keeps its layers' IDs, so its instances, the copies of those inside other
- * components, and all their overrides keep pointing at it. Its instances then sync in the order
- * the editor syncs an edited component. A definition the revision draws as another kind of layer
- * stays as it was and is reported. With `assetKeys` only those assets' definitions are redrawn,
- * and the document moves to the revision once none of its definitions is left behind.
- */
-export function updateLibraryDefinitions(
+/** Visits each layer of `target` with the layer of the revision layer `source` it draws. */
+function matchTree(
   graph: SceneGraph,
   revision: ComponentLibraryRevision,
-  { variable = (id) => id, assetKeys }: LibraryDefinitionUpdateOptions = {}
-): LibraryDefinitionUpdate {
-  const { libraryId, revisionId } = revision.manifest
+  source: SceneNode,
+  target: SceneNode,
+  visit: (sourceId: string, targetId: string) => void
+): void {
+  visit(source.id, target.id)
+  for (const [child, pair] of matchChildren(graph, revision, source, target))
+    if (pair) matchTree(graph, revision, child, pair, visit)
+}
+
+const assetOf = (root: SceneNode) => root.librarySource?.identity.assetKey ?? root.id
+
+/**
+ * Pairs each definition with the revision layer it draws, reporting the ones the revision no
+ * longer has or draws as another kind of layer, and the layers the revision drops.
+ */
+function pairDefinitions(
+  graph: SceneGraph,
+  revision: ComponentLibraryRevision,
+  roots: SceneNode[],
+  pairs: DefinitionPair[]
+): { result: LibraryDefinitionUpdate; removed: string[] } {
   const result: LibraryDefinitionUpdate = { updated: [], replaced: [], missing: [] }
-  const pairs: DefinitionPair[] = []
   const removed: string[] = []
-  const assetOf = (root: SceneNode) => root.librarySource?.identity.assetKey ?? root.id
-  const outdated = outdatedDefinitionRoots(graph, libraryId, revisionId)
-  const left = assetKeys ? outdated.filter((root) => !assetKeys.has(assetOf(root))) : []
-  for (const root of outdated) {
-    if (left.includes(root)) continue
+  for (const root of roots) {
     const key = assetOf(root)
     const source = revisionRoot(revision, root)
     if (!source) {
@@ -193,15 +210,48 @@ export function updateLibraryDefinitions(
       result.updated.push(key)
     }
   }
+  return { result, removed }
+}
+
+/**
+ * Brings a document's definitions of a library to a revision in place: each takes the revision's
+ * layers and fields but keeps its layers' IDs, so its instances, the copies of those inside other
+ * components, and all their overrides keep pointing at it. Its instances then sync in the order
+ * the editor syncs an edited component. A definition the revision draws as another kind of layer
+ * stays as it was and is reported. With `assetKeys` only those assets' definitions are redrawn,
+ * and the document moves to the revision once none of its definitions is left behind. A redrawn
+ * definition draws the components it uses from the definitions already in the document, so a
+ * nested instance keeps the definition, and the overrides, it had; only a component, or a layer
+ * of one, that none of them holds is copied in.
+ */
+export function updateLibraryDefinitions(
+  graph: SceneGraph,
+  revision: ComponentLibraryRevision,
+  { variable = (id) => id, assetKeys }: LibraryDefinitionUpdateOptions = {}
+): LibraryDefinitionUpdate {
+  const { libraryId, revisionId } = revision.manifest
+  const pairs: DefinitionPair[] = []
+  const definitions = definitionRoots(graph, libraryId)
+  const outdated = definitions.filter(
+    (root) => root.librarySource?.identity.revisionId !== revisionId
+  )
+  const redrawn = assetKeys ? outdated.filter((root) => assetKeys.has(assetOf(root))) : outdated
+  const { result, removed } = pairDefinitions(graph, revision, redrawn, pairs)
 
   // A document can hold several copies of a definition, so each revision layer can have several.
   const copies = new Map<string, string[]>()
+  const addCopy = (sourceId: string, targetId: string) => {
+    copies.set(sourceId, [...(copies.get(sourceId) ?? []), targetId])
+  }
   const collect = (from: number) => {
-    for (const { source, target } of pairs.slice(from)) {
-      copies.set(source.id, [...(copies.get(source.id) ?? []), target.id])
-    }
+    for (const { source, target } of pairs.slice(from)) addCopy(source.id, target.id)
   }
   collect(0)
+  for (const root of definitions) {
+    if (redrawn.includes(root)) continue
+    const source = revisionRoot(revision, root)
+    if (source?.type === root.type) matchTree(graph, revision, source, root, addCopy)
+  }
   /**
    * The document's copy of a revision layer: the one a layer already points at, or else the one
    * inside `scope`, the component an instance draws, as the copies inside an instance point into.
@@ -299,7 +349,7 @@ export function updateLibraryDefinitions(
     new Map(pairs.map(({ source, target }) => [source.id, target.id]))
   )
   // The document uses the revision once no definition it holds is left behind.
-  if (left.length === 0)
+  if (redrawn.length === outdated.length)
     graph.enabledLibraries.set(libraryId, { libraryId, revisionId, enabled: true })
   const components = pairs.flatMap(({ target }) => (target.type === 'COMPONENT' ? [target.id] : []))
   graph.syncInstancesTogether(componentSyncOrder(graph, new Set(components)))
