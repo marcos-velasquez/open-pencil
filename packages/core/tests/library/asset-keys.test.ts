@@ -16,4 +16,19 @@ describe('asset keys a library gives from component names', () => {
     expect(new Set(keys).size).toBe(keys.length)
     expect(keys.slice(0, 3)).toEqual(['icon', 'component', 'component-2'])
   })
+
+  test('keeps the identity a component already publishes under', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const figma = graph.createNode('COMPONENT', page.id, { name: 'Chip', sourceLibraryKey: 'chip' })
+    const named = graph.createNode('COMPONENT', page.id, { name: 'Chip' })
+
+    const assignments = ensureLibraryAssetKeys(graph)
+
+    expect(assignments).toEqual([
+      { nodeId: figma.id, assetKey: 'chip', existing: true },
+      { nodeId: named.id, assetKey: 'chip-2', existing: false }
+    ])
+    expect(graph.getNode(figma.id)?.componentKey).toBeNull()
+  })
 })
