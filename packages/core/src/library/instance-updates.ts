@@ -1,17 +1,27 @@
-import type { SceneGraph } from '@open-pencil/scene-graph'
+import type { LibraryAssetIdentity, SceneGraph } from '@open-pencil/scene-graph'
 
 import { findLibraryDefinition } from './definitions'
 import type { ComponentLibraryRevision, LibraryAssetDescriptor } from './types'
 import type { LibraryInstanceUpdate } from './update'
 
-export function libraryAssetKeyForComponent(graph: SceneGraph, componentId: string): string | null {
-  let node = graph.getNode(componentId)
-  while (node) {
-    const identity = node.librarySource?.identity
-    if (identity) return identity.assetKey
+/**
+ * The library asset a component belongs to: the one its definition draws, so a variant, keyed or
+ * not, belongs to its set's.
+ */
+export function libraryIdentityForComponent(
+  graph: SceneGraph,
+  componentId: string
+): LibraryAssetIdentity | null {
+  let identity: LibraryAssetIdentity | null = null
+  for (let node = graph.getNode(componentId); node; ) {
+    identity = node.librarySource?.identity ?? identity
     node = node.parentId ? graph.getNode(node.parentId) : undefined
   }
-  return null
+  return identity
+}
+
+export function libraryAssetKeyForComponent(graph: SceneGraph, componentId: string): string | null {
+  return libraryIdentityForComponent(graph, componentId)?.assetKey ?? null
 }
 
 function targetComponentId(
@@ -58,10 +68,10 @@ export function planOutdatedLibraryInstances(
     if (instance.type !== 'INSTANCE' || !instance.componentId) continue
     if (instanceIds && !instanceIds.has(instance.id)) continue
     const component = graph.getNode(instance.componentId)
-    const identity = component?.librarySource?.identity
-    if (!identity || identity.libraryId !== revision.manifest.libraryId) continue
-    const assetKey = libraryAssetKeyForComponent(graph, component.id)
-    if (!assetKey || (assetKeys && !assetKeys.has(assetKey))) continue
+    const identity = component ? libraryIdentityForComponent(graph, component.id) : null
+    if (!component || identity?.libraryId !== revision.manifest.libraryId) continue
+    const { assetKey } = identity
+    if (assetKeys && !assetKeys.has(assetKey)) continue
     if (identity.revisionId === revision.manifest.revisionId) continue
     const descriptor = descriptors.get(assetKey)
     if (!descriptor) continue

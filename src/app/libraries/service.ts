@@ -5,7 +5,7 @@ import {
   materializeLibraryAsset,
   ensureLibraryAssetKeys,
   libraryUpdateImpact,
-  libraryAssetKeyForComponent,
+  libraryIdentityForComponent,
   planOutdatedLibraryInstances,
   planLibraryInstanceUpdates,
   summarizeLibraryUpdate,
@@ -221,8 +221,8 @@ export class LibraryService implements ComponentCatalog {
       instance?.type === 'INSTANCE' && instance.componentId
         ? editor.graph.getNode(instance.componentId)
         : null
-    const identity = component?.librarySource?.identity
-    if (!identity) return
+    const identity = component ? libraryIdentityForComponent(editor.graph, component.id) : null
+    if (!component || !identity) return
     const summary = this.#summaries.value.find((item) => item.libraryId === identity.libraryId)
     if (!summary || summary.latestRevisionId === identity.revisionId) return
     const latest = await this.#getRevision(identity.libraryId, summary.latestRevisionId)
@@ -251,13 +251,12 @@ export class LibraryService implements ComponentCatalog {
       const instancesByAsset = new Map<string, string[]>()
       for (const node of editor.graph.getAllNodes()) {
         if (node.type !== 'INSTANCE' || !node.componentId) continue
-        const component = editor.graph.getNode(node.componentId)
-        const identity = component?.librarySource?.identity
-        if (!component || identity?.libraryId !== summary.libraryId) continue
+        const identity = libraryIdentityForComponent(editor.graph, node.componentId)
+        if (identity?.libraryId !== summary.libraryId) continue
         if (identity.revisionId === summary.latestRevisionId) continue
-        const assetKey = libraryAssetKeyForComponent(editor.graph, component.id)
-        const latestAsset = assetKey ? assets.get(assetKey) : undefined
-        if (!assetKey || !latestAsset) continue
+        const { assetKey } = identity
+        const latestAsset = assets.get(assetKey)
+        if (!latestAsset) continue
         let previousAssets = previousAssetsByRevision.get(identity.revisionId)
         if (!previousAssets) {
           const previous = await this.#getRevision(summary.libraryId, identity.revisionId)

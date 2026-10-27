@@ -25,12 +25,26 @@ function widen(library: SceneGraph, button: SceneNode) {
   library.createNode('TEXT', button.id, { name: 'Badge', text: '1' })
 }
 
+/** A library whose button is a set holding one variant, with no key of its own. */
+function variants() {
+  const graph = new SceneGraph()
+  const set = graph.createNode('COMPONENT_SET', graph.getPages()[0].id, {
+    name: 'Button',
+    componentKey: 'button'
+  })
+  const variant = graph.createNode('COMPONENT', set.id, { name: 'Size=Large', width: 80 })
+  graph.createNode('TEXT', variant.id, { name: 'Label', text: 'Old' })
+  return graph
+}
+
 /**
  * A document holding an overridden instance of a library button, with a newer revision published
  * that makes the changes `revise` makes.
  */
-async function updatable(revise: (library: SceneGraph, button: SceneNode) => void = widen) {
-  const library = source(80, 'Old')
+async function updatable(
+  revise: (library: SceneGraph, button: SceneNode) => void = widen,
+  library = source(80, 'Old')
+) {
   const catalog = new MemoryLibraryCatalog()
   const first = await catalog.publishRevision({
     libraryId: 'library',
@@ -116,6 +130,29 @@ describe('library service updates', () => {
     expect(moved?.name).toBe('Size=Large')
     expect(moved?.librarySource?.identity.revisionId).toBe(latest)
     expect(graph.enabledLibraries.get('library')?.revisionId).toBe(latest)
+
+    editor.undo.undo()
+    expect(graph.getNode(instance.id)?.componentId).toBe(componentId)
+  })
+
+  test('moves the instances of a keyless variant whose set the library turns into a component', async () => {
+    const { graph, instance, componentId, editor, service, latest } = await updatable(
+      (library, set) => {
+        library.deleteNode(set.id)
+        const button = library.createNode('COMPONENT', library.getPages()[0].id, {
+          name: 'Button',
+          componentKey: 'button',
+          width: 120
+        })
+        library.createNode('TEXT', button.id, { name: 'Label', text: 'New' })
+      },
+      variants()
+    )
+
+    await service.applyUpdate(editor, 'library')
+    const moved = graph.getNode(graph.getNode(instance.id)?.componentId ?? '')
+    expect(moved?.librarySource?.identity).toMatchObject({ assetKey: 'button', revisionId: latest })
+    expect(graph.getNode(instance.id)?.width).toBe(120)
 
     editor.undo.undo()
     expect(graph.getNode(instance.id)?.componentId).toBe(componentId)
