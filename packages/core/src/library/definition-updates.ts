@@ -1,5 +1,5 @@
 import { mapValues } from 'es-toolkit'
-import { groupBy } from 'es-toolkit/array'
+import { countBy, groupBy } from 'es-toolkit/array'
 
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import { cloneNodeProps } from '@open-pencil/scene-graph/copy'
@@ -77,10 +77,8 @@ function revisionDefinitionRoot(
 }
 
 /** What pairs a layer across revisions: a variant's key, which a rename keeps, or its kind and name. */
-const layerKey = (node: SceneNode) =>
-  node.type === 'COMPONENT' && node.componentKey
-    ? `COMPONENT#${node.componentKey}`
-    : `${node.type}:${node.name}`
+/** What pairs a layer copied before definitions recorded their library layer: its kind and name. */
+const layerKey = (node: SceneNode) => `${node.type}:${node.name}`
 
 /** The component the nearest instance above a layer draws, which the layer's copy points into. */
 function enclosingComponent(graph: SceneGraph, node: SceneNode): string | null {
@@ -113,10 +111,11 @@ function copyTree(
 }
 
 /**
- * Pairs the layers of `target` with those of the revision layer `source` of the same kind and
- * name, in order, as a library update finds the layer an override names; a variant pairs by its
- * key, and the variants left over pair in order. A revision layer left without a pair is copied
- * in; the layers left without one are returned for removal.
+ * Pairs the layers of `target` with those of the revision layer `source`, as a library update
+ * finds the layer an override names: by the library layer each copies. A layer copied before
+ * definitions recorded it pairs by kind and name only when that names one layer on each side, so
+ * an ambiguous or renamed one is never guessed. A revision layer left without a pair is copied in;
+ * the layers left without one are returned for removal, and their overrides go with them.
  */
 function pairLayers(
   graph: SceneGraph,
@@ -128,29 +127,34 @@ function pairLayers(
 ): string[] {
   tree.set(source.id, target.id)
   pairs.push({ source, target, tree })
-  const unpaired = groupBy(graph.getChildren(target.id), layerKey)
+  const layers = graph.getChildren(target.id)
+  const byLibraryLayer = new Map(
+    layers.flatMap((layer) =>
+      layer.libraryLayerId ? [[layer.libraryLayerId, layer] as const] : []
+    )
+  )
+  const children = revision.graph.getChildren(source.id)
+  const unrecorded = new Map(
+    Object.entries(
+      groupBy(
+        layers.filter((layer) => !layer.libraryLayerId),
+        layerKey
+      )
+    )
+  )
+  const namesakes = countBy(children, layerKey)
+  const paired = new Set<SceneNode>()
   const removed: string[] = []
-  const unmatched: SceneNode[] = []
-  for (const child of revision.graph.getChildren(source.id)) {
-    const pair = unpaired[layerKey(child)]?.shift()
-    if (pair) removed.push(...pairLayers(graph, revision, child, pair, tree, pairs))
-    else unmatched.push(child)
-  }
-  // A variant renamed without a key is still the component its instances draw: the variants
-  // left on both sides pair in order.
-  const left = new Set(Object.values(unpaired).flat())
-  const variants = graph
-    .getChildren(target.id)
-    .filter((layer) => layer.type === 'COMPONENT' && left.has(layer))
-  const renamed = new Set<SceneNode>()
-  for (const child of unmatched) {
-    const pair = child.type === 'COMPONENT' ? variants.shift() : undefined
-    if (pair) {
-      renamed.add(pair)
+  for (const child of children) {
+    let pair = child.libraryLayerId ? byLibraryLayer.get(child.libraryLayerId) : undefined
+    const byName = unrecorded.get(layerKey(child))
+    if (!pair && byName?.length === 1 && namesakes[layerKey(child)] === 1) pair = byName[0]
+    if (pair && !paired.has(pair)) {
+      paired.add(pair)
       removed.push(...pairLayers(graph, revision, child, pair, tree, pairs))
     } else copyTree(graph, revision, child.id, target.id, tree, pairs)
   }
-  for (const layer of left) if (!renamed.has(layer)) removed.push(layer.id)
+  for (const layer of layers) if (!paired.has(layer)) removed.push(layer.id)
   return removed
 }
 

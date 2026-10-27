@@ -104,6 +104,24 @@ describe('library definition updates', () => {
     expect(layer(graph, remove.id, 'Label').text).toBe('Remove')
   })
 
+  test('pairs a saved document’s definitions with the next revision by the library layers they copy', async () => {
+    const source = await reopened(library().graph)
+    const doc = await document(source)
+    const saved = await reopened(doc.graph)
+    const definition = saved.getNode(doc.componentId)
+    expect(definition?.libraryLayerId).toBeTruthy()
+    expect(saved.getChildren(doc.componentId).every((node) => node.libraryLayerId)).toBe(true)
+
+    const button = [...source.getAllNodes()].find((node) => node.componentKey === 'button')
+    // A revision follows what a layer draws, not its name, so the rename comes with a new radius.
+    source.updateNode(layer(source, button?.id ?? '', 'Label').id, { name: 'Caption' })
+    source.updateNode(button?.id ?? '', { cornerRadius: 12 })
+    updateLibraryDefinitions(saved, await revisionOf(source))
+
+    const direct = [...saved.getAllNodes()].find((node) => node.name === 'Save')
+    expect(layer(saved, direct?.id ?? '', 'Caption').text).toBe('Save')
+  })
+
   test('redraws a definition in place, keeping every instance and copy with its overrides', async () => {
     const source = library()
     const doc = await document(source.graph)
@@ -204,45 +222,50 @@ describe('library definition updates', () => {
   })
 
   describe('variants', () => {
-    /** A library whose chip set has a variant for each state, none of them keyed. */
-    function chips(states: string[]) {
+    /** A library whose chip set has a Default and a Hover variant, neither of them keyed. */
+    function chips() {
       const graph = new SceneGraph()
       const set = graph.createNode('COMPONENT_SET', graph.getPages()[0].id, {
         name: 'Chip',
         componentKey: 'chip'
       })
-      for (const state of states) {
-        const variant = graph.createNode('COMPONENT', set.id, { name: `State=${state}` })
-        graph.createNode('TEXT', variant.id, { name: 'Label', text: state })
-      }
-      return { graph, set }
+      const variants = Object.fromEntries(
+        ['Default', 'Hover'].map((state) => {
+          const variant = graph.createNode('COMPONENT', set.id, { name: `State=${state}` })
+          graph.createNode('TEXT', variant.id, { name: 'Label', text: state })
+          return [state, variant.id]
+        })
+      )
+      return { graph, variants }
     }
 
-    async function placed(states: string[], variant: string) {
+    async function placed(library: SceneGraph, variant: string) {
       const graph = new SceneGraph()
-      const { componentSetId } = materializeLibraryAsset(
-        graph,
-        await revisionOf(chips(states).graph),
-        'chip'
-      )
+      const { componentSetId } = materializeLibraryAsset(graph, await revisionOf(library), 'chip')
       const component = layer(graph, componentSetId ?? '', `State=${variant}`)
       const instance = graph.createInstance(component.id, graph.getPages()[0].id)
       if (!instance) throw new Error('Expected the instance')
       return { graph, instance: instance.id }
     }
 
-    test('keeps the instances of a variant the revision renames', async () => {
-      const { graph, instance } = await placed(['Default', 'Hover'], 'Hover')
-      updateLibraryDefinitions(graph, await revisionOf(chips(['Default', 'Pressed']).graph))
+    test('keeps the instances of a variant the library renames', async () => {
+      const library = chips()
+      const { graph, instance } = await placed(library.graph, 'Hover')
+      library.graph.updateNode(library.variants.Hover ?? '', { name: 'State=Pressed' })
+      const label = layer(library.graph, library.variants.Hover ?? '', 'Label')
+      library.graph.updateNode(label.id, { text: 'Pressed' })
+      updateLibraryDefinitions(graph, await revisionOf(library.graph))
 
       const component = graph.getNode(graph.getNode(instance)?.componentId ?? '')
       expect(component?.name).toBe('State=Pressed')
       expect(layer(graph, instance, 'Label').text).toBe('Pressed')
     })
 
-    test('keeps a variant the revision drops while an instance draws it', async () => {
-      const { graph, instance } = await placed(['Default', 'Hover'], 'Hover')
-      updateLibraryDefinitions(graph, await revisionOf(chips(['Default']).graph))
+    test('keeps a variant the library drops while an instance draws it', async () => {
+      const library = chips()
+      const { graph, instance } = await placed(library.graph, 'Hover')
+      library.graph.deleteNode(library.variants.Hover ?? '')
+      updateLibraryDefinitions(graph, await revisionOf(library.graph))
 
       expect(graph.getNode(graph.getNode(instance)?.componentId ?? '')?.name).toBe('State=Hover')
     })
