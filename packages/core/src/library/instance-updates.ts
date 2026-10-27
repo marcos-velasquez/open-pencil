@@ -5,19 +5,17 @@ import type { ComponentLibraryRevision, LibraryAssetDescriptor } from './types'
 import type { LibraryInstanceUpdate } from './update'
 
 /**
- * The library asset a component belongs to: the one its definition draws, so a variant, keyed or
- * not, belongs to its set's.
+ * The library asset a component belongs to: a variant's, keyed or not, is its set's, and any other
+ * component's its own, as a library publishes each component outside a set as an asset.
  */
 export function libraryIdentityForComponent(
   graph: SceneGraph,
   componentId: string
 ): LibraryAssetIdentity | null {
-  let identity: LibraryAssetIdentity | null = null
-  for (let node = graph.getNode(componentId); node; ) {
-    identity = node.librarySource?.identity ?? identity
-    node = node.parentId ? graph.getNode(node.parentId) : undefined
-  }
-  return identity
+  const component = graph.getNode(componentId)
+  const parent = component?.parentId ? graph.getNode(component.parentId) : undefined
+  const set = parent?.type === 'COMPONENT_SET' ? parent.librarySource?.identity : undefined
+  return set ?? component?.librarySource?.identity ?? null
 }
 
 export function libraryAssetKeyForComponent(graph: SceneGraph, componentId: string): string | null {

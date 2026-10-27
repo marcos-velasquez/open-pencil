@@ -404,7 +404,10 @@ export class LibraryService implements ComponentCatalog {
     const restore = () => {
       this.#swap(
         editor,
-        plans.map((plan) => ({ instanceId: plan.instanceId, componentId: plan.previousComponentId }))
+        plans.map((plan) => ({
+          instanceId: plan.instanceId,
+          componentId: plan.previousComponentId
+        }))
       )
       editor.requestRender()
     }
