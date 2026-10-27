@@ -18,7 +18,10 @@ function source(width: number, label: string) {
   return graph
 }
 
-/** A document holding an overridden instance of a library button, with a newer revision published. */
+/**
+ * A document holding an overridden instance of a library button, with a newer revision published
+ * that widens the button, relabels it and adds a badge.
+ */
 async function updatable() {
   const library = source(80, 'Old')
   const catalog = new MemoryLibraryCatalog()
@@ -32,6 +35,7 @@ async function updatable() {
   if (!button) throw new Error('Expected the button')
   library.updateNode(button.id, { width: 120 })
   library.updateNode(library.getChildren(button.id)[0]?.id ?? '', { text: 'New' })
+  library.createNode('TEXT', button.id, { name: 'Badge', text: '1' })
   await catalog.publishRevision({
     libraryId: 'library',
     name: 'Library',
@@ -70,6 +74,33 @@ describe('library service updates', () => {
     editor.undo.redo()
     expect(graph.getNode(instance.id)?.width).toBe(120)
     expect(graph.getChildren(instance.id)[0]?.text).toBe('Hello')
+  })
+
+  test('redoes an update as it left the document, so the layers it added keep their IDs', async () => {
+    const { graph, instance, editor, service } = await updatable()
+    const badges = () =>
+      graph
+        .getChildren(instance.id)
+        .filter((node) => node.name === 'Badge')
+        .map((node) => node.id)
+
+    await service.applyUpdate(editor, 'library')
+    const added = badges()
+    expect(added).toHaveLength(1)
+
+    editor.undo.undo()
+    expect(badges()).toEqual([])
+    editor.undo.redo()
+    expect(badges()).toEqual(added)
+  })
+
+  test('leaves no step to undo when the library has no update left', async () => {
+    const { graph, instance, editor, service } = await updatable()
+
+    await service.applyUpdate(editor, 'library')
+    await service.applyUpdate(editor, 'library')
+    editor.undo.undo()
+    expect(graph.getNode(instance.id)?.width).toBe(80)
   })
 
   test('redraws an asset group in place, keeping its instances’ components and overrides', async () => {

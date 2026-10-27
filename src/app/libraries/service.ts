@@ -210,6 +210,7 @@ export class LibraryService implements ComponentCatalog {
   }
 
   async applyUpdate(editor: EditorStore, libraryId: string): Promise<void> {
+    if (!this.#updates.value.some((update) => update.libraryId === libraryId)) return
     await this.#updateInPlace(editor, new Map([[libraryId, undefined]]), 'Update library')
   }
 
@@ -338,7 +339,8 @@ export class LibraryService implements ComponentCatalog {
   /**
    * Redraws the document's definitions of each library, or only those of the given assets, at the
    * library's latest revision in place, so every instance, and every copy of one inside a
-   * component, keeps its overrides. Undo puts the document back as it was.
+   * component, keeps its overrides. Undo puts the document back as it was, and redo as the update
+   * left it, so the layers it added keep their IDs for the edits redone after it.
    */
   async #updateInPlace(
     editor: EditorStore,
@@ -349,21 +351,18 @@ export class LibraryService implements ComponentCatalog {
     for (const [libraryId, assetKeys] of libraries)
       updates.push({ revision: await this.#getRevision(libraryId), assetKeys })
     if (updates.length === 0) return
-    let checkpoint: ReturnType<typeof captureGraphCheckpoint> | null = null
-    const apply = () => {
-      checkpoint = captureGraphCheckpoint(editor.graph)
-      editor.updateEnabledLibraries(() => {
-        for (const { revision, assetKeys } of updates)
-          updateLibraryDefinitions(editor.graph, revision, { assetKeys })
-      })
-      editor.requestRender()
-    }
-    const restore = () => {
-      checkpoint?.restore()
+    const before = captureGraphCheckpoint(editor.graph)
+    editor.updateEnabledLibraries(() => {
+      for (const { revision, assetKeys } of updates)
+        updateLibraryDefinitions(editor.graph, revision, { assetKeys })
+    })
+    const after = captureGraphCheckpoint(editor.graph)
+    editor.requestRender()
+    const restore = (checkpoint: typeof before) => () => {
+      checkpoint.restore()
       editor.refreshDocumentSettings()
     }
-    apply()
-    editor.pushUndoEntry({ label, forward: apply, inverse: restore })
+    editor.pushUndoEntry({ label, forward: restore(after), inverse: restore(before) })
     await this.refresh(editor)
   }
 
