@@ -8,12 +8,17 @@ export interface AssetKeyAssignment {
   existing: boolean
 }
 
+/** The longest key a name gives, leaving room for the `-N` a namesake's key takes. */
+const MAX_NAME_KEY_LENGTH = 240
+
+/** A valid asset key from a component's name: it starts with a letter or digit. */
 function normalizeAssetKey(name: string): string {
   const normalized = name
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9._:/-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(/^[^a-z0-9]+|-+$/g, '')
+    .slice(0, MAX_NAME_KEY_LENGTH)
   return normalized || 'component'
 }
 
