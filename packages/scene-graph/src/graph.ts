@@ -18,6 +18,7 @@ import { withGeneratedFrameSize } from './generated'
 import * as HitTest from './hit-test'
 import { generateId } from './ids'
 import * as Instances from './instances'
+import { remapInstanceOverrideState } from './instances/overrides'
 import { LayoutWrites } from './layout/writes'
 import Matrix from './matrix'
 import { CONTAINER_TYPES, createDefaultNode } from './node-defaults'
@@ -728,6 +729,34 @@ export class SceneGraph {
     parentId: string,
     overrides: Partial<SceneNode> = {}
   ): SceneNode | null {
+    const copies = new Map<string, string>()
+    const clone = this.cloneSubtree(sourceId, parentId, overrides, copies)
+    if (!clone) return null
+    // An instance's overrides name its own layers, so a copy's name the layers copied with it.
+    const copyOf = (id: string) => copies.get(id) ?? id
+    for (const id of copies.values()) {
+      const node = this.nodes.get(id)
+      if (
+        !node ||
+        (node.instanceOverrides.self.size === 0 && node.instanceOverrides.descendants.size === 0)
+      )
+        continue
+      this.updateNode(id, {
+        instanceOverrides: remapInstanceOverrideState(node.instanceOverrides, {
+          node: copyOf,
+          variable: (variableId) => variableId
+        })
+      })
+    }
+    return clone
+  }
+
+  private cloneSubtree(
+    sourceId: string,
+    parentId: string,
+    overrides: Partial<SceneNode>,
+    copies: Map<string, string>
+  ): SceneNode | null {
     const src = this.nodes.get(sourceId)
     if (!src) return null
 
@@ -738,9 +767,10 @@ export class SceneGraph {
     props.status = null
     const clone = this.createNode(src.type, parentId, { ...props, ...overrides })
     if (src.status) markSourceFieldsEdited(clone, ['status'])
+    copies.set(sourceId, clone.id)
 
     for (const childId of src.childIds) {
-      this.cloneTree(childId, clone.id)
+      this.cloneSubtree(childId, clone.id, {}, copies)
     }
 
     return clone
