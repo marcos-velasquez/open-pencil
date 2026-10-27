@@ -67,7 +67,6 @@ const publish = defineCommand({
     // A component without an asset key takes the one its name gives; `--write` keeps it in the
     // source, so renaming the component later does not change its identity across revisions.
     const assigned = ensureLibraryAssetKeys(graph).filter((assignment) => !assignment.existing)
-    if (args.write && assigned.length > 0) await writeFigDocument(graph, file)
     const revision = await new FileSystemLibraryCatalog(args.root).publishRevision({
       libraryId: args.id,
       name: args.name,
@@ -75,16 +74,19 @@ const publish = defineCommand({
       description: args.description,
       previousRevisionId: args.previous || null
     })
+    // Only once published: a failed publication leaves the source as it was.
+    if (args.write && assigned.length > 0) await writeFigDocument(graph, file)
     if (args.json) {
       console.log(JSON.stringify(revision.manifest, null, 2))
       return
     }
     if (assigned.length > 0) {
+      const one = assigned.length === 1
       console.log(
         args.write
-          ? ok(`Saved ${assigned.length} new asset keys to ${file}`)
+          ? ok(`Saved ${assigned.length} new asset key${one ? '' : 's'} to ${file}`)
           : dim(
-              `${assigned.length} components took asset keys from their names; pass --write to keep them in ${file}`
+              `${assigned.length} ${one ? 'component took an asset key from its name' : 'components took asset keys from their names'}; pass --write to keep ${one ? 'it' : 'them'} in ${file}`
             )
       )
     }

@@ -62,18 +62,23 @@ describe('libraries CLI', () => {
 
     const first = await publish()
     expect(first.exitCode).toBe(0)
-    expect(first.stdout).toContain('1 components took asset keys from their names')
+    expect(first.stdout).toContain('1 component took an asset key from its name')
+    expect(await readFile(source)).toEqual(authoredBytes)
+
+    // A publication that fails leaves the source as it was, even with --write.
+    const stale = await publish('--previous', 'stale', '--write')
+    expect(stale.exitCode).not.toBe(0)
     expect(await readFile(source)).toEqual(authoredBytes)
 
     const saved = await publish('--previous', await latest(), '--write')
     expect(saved.exitCode).toBe(0)
-    expect(saved.stdout).toContain('Saved 1 new asset keys')
+    expect(saved.stdout).toContain('Saved 1 new asset key to')
     expect(await readFile(source)).not.toEqual(authoredBytes)
 
     // The next publication reads the key the source now keeps instead of giving a new one.
     const third = await publish('--previous', await latest())
     expect(third.exitCode).toBe(0)
-    expect(third.stdout).not.toContain('asset keys')
+    expect(third.stdout).not.toContain('asset key')
 
     const revision = await new FileSystemLibraryCatalog(catalog).getRevision('ds')
     expect(revision.manifest.assets.map((asset) => asset.key)).toEqual(['primary-button'])
