@@ -18,7 +18,6 @@ import { withGeneratedFrameSize } from './generated'
 import * as HitTest from './hit-test'
 import { generateId } from './ids'
 import * as Instances from './instances'
-import { remapInstanceOverrideState } from './instances/overrides'
 import { LayoutWrites } from './layout/writes'
 import Matrix from './matrix'
 import { CONTAINER_TYPES, createDefaultNode } from './node-defaults'
@@ -732,20 +731,19 @@ export class SceneGraph {
     const copies = new Map<string, string>()
     const clone = this.cloneSubtree(sourceId, parentId, overrides, copies)
     if (!clone) return null
-    // An instance's overrides name its own layers, so a copy's name the layers copied with it.
-    const copyOf = (id: string) => copies.get(id) ?? id
+    // An instance's overrides name its own layers, so a copy's name the layers copied with it. What
+    // they point at stays: a copied instance draws the original component, never a copy of it.
     for (const id of copies.values()) {
       const node = this.nodes.get(id)
-      if (
-        !node ||
-        (node.instanceOverrides.self.size === 0 && node.instanceOverrides.descendants.size === 0)
-      )
-        continue
+      if (!node || node.instanceOverrides.descendants.size === 0) continue
+      const { self, descendants } = node.instanceOverrides
       this.updateNode(id, {
-        instanceOverrides: remapInstanceOverrideState(node.instanceOverrides, {
-          node: copyOf,
-          variable: (variableId) => variableId
-        })
+        instanceOverrides: {
+          self,
+          descendants: new Map(
+            [...descendants].map(([layerId, fields]) => [copies.get(layerId) ?? layerId, fields])
+          )
+        }
       })
     }
     return clone
