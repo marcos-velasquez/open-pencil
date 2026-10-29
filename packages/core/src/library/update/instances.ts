@@ -1,8 +1,10 @@
 import type { LibraryAssetIdentity, SceneGraph } from '@open-pencil/scene-graph'
 
-import { findLibraryDefinition } from './definitions'
-import type { ComponentLibraryRevision, LibraryAssetDescriptor } from './types'
-import type { LibraryInstanceUpdate } from './update'
+import { findLibraryDefinition } from '#core/library/definitions'
+import type { ComponentLibraryRevision, LibraryAssetDescriptor } from '#core/library/types'
+import { assetComponent } from '#core/library/variants'
+
+import type { LibraryInstanceUpdate } from './summary'
 
 /**
  * The library asset a component belongs to: a variant's, keyed or not, is its set's, and any other
@@ -34,24 +36,9 @@ function targetComponentId(
     descriptor.key,
     revision.manifest.revisionId
   )
-  if (!root) return null
-  const candidates =
-    root.type === 'COMPONENT'
-      ? [root]
-      : graph.getChildren(root.id).filter((node) => node.type === 'COMPONENT')
   const previous = graph.getNode(previousComponentId)
-  if (!previous) return null
-  const exact = candidates.find((candidate) => {
-    const entries = Object.entries(previous.componentPropertyValues)
-    return (
-      entries.length === Object.keys(candidate.componentPropertyValues).length &&
-      entries.every(([name, value]) => candidate.componentPropertyValues[name] === value)
-    )
-  })
-  if (candidates.length === 0) return null
-  const fallback = [...candidates].sort((left, right) => left.y - right.y || left.x - right.x)[0]
-  const target = exact ?? fallback
-  return { id: target.id, fallback: !exact }
+  const target = root && previous ? assetComponent(graph, root, previous) : undefined
+  return target ? { id: target.component.id, fallback: target.fallback } : null
 }
 
 export function planOutdatedLibraryInstances(

@@ -1,19 +1,18 @@
-import { mapValues } from 'es-toolkit'
 import { countBy, groupBy } from 'es-toolkit/array'
 
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import { cloneNodeProps } from '@open-pencil/scene-graph/copy'
-import { remapInstanceOverrideState } from '@open-pencil/scene-graph/instances/overrides'
+import { findInstanceAncestor } from '@open-pencil/scene-graph/instances'
 
 import { componentSyncOrder } from '#core/editor/component-sync'
-
+import { instanceSwapPropertyIds, resolvedReferences } from '#core/library/copied-references'
 import {
   copyImages,
   copyLibraryTree,
   getInternalLibraryPage,
   libraryDefinitionSource
-} from './materialize'
-import type { ComponentLibraryRevision } from './types'
+} from '#core/library/materialize'
+import type { ComponentLibraryRevision } from '#core/library/types'
 
 export interface LibraryDefinitionUpdateOptions {
   /** The document's variable for a variable of the revision; the revision's own by default. */
@@ -75,16 +74,6 @@ function revisionDefinitionRoot(
 
 /** What pairs a layer copied before definitions recorded their library layer: its kind and name. */
 const layerKey = (node: SceneNode) => `${node.type}:${node.name}`
-
-/** The component the nearest instance above a layer draws, which the layer's copy points into. */
-function enclosingComponent(graph: SceneGraph, node: SceneNode): string | null {
-  for (let id = node.parentId; id;) {
-    const parent = graph.getNode(id)
-    if (parent?.type === 'INSTANCE') return parent.componentId
-    id = parent?.parentId ?? null
-  }
-  return null
-}
 
 /** Copies a revision tree into the document, pairing each copy with the layer it draws. */
 function copyTree(
@@ -277,60 +266,32 @@ export function updateLibraryDefinitions(
   }
 
   // An instance-swap property names the components it offers by their revision IDs too.
-  const swapProperties = new Set(
-    [...revision.graph.getAllNodes()].flatMap((node) =>
-      node.componentPropertyDefinitions.flatMap((definition) =>
-        definition.type === 'INSTANCE_SWAP' ? [definition.id] : []
-      )
-    )
-  )
+  const swapProperties = instanceSwapPropertyIds(revision.graph.getAllNodes())
   // Pairs grow while this runs, as components new to the definitions are copied in.
   for (const { source, target, tree } of pairs) {
-    const componentId = source.componentId
-      ? copyOf(source.componentId, target.componentId, enclosingComponent(graph, target))
+    // The copies inside an instance point into the component it draws.
+    const scope = target.parentId
+      ? (findInstanceAncestor(graph, target.parentId)?.componentId ?? null)
       : null
     // Where a layer came from in its file stays its own, so saving patches it in place.
-    const {
-      source: _origin,
-      overrideKey: _overrideKey,
-      ...fields
-    } = cloneNodeProps(source, componentId)
-    const previousDefaults = new Map(
-      target.componentPropertyDefinitions.map((definition) => [
-        definition.id,
-        definition.defaultValue
-      ])
-    )
+    const { source: _origin, overrideKey: _overrideKey, ...fields } = cloneNodeProps(source, null)
     graph.updateNode(target.id, {
       ...fields,
-      componentPropertyDefinitions: (fields.componentPropertyDefinitions ?? []).map((definition) =>
-        definition.type === 'INSTANCE_SWAP' && definition.defaultValue
-          ? {
-              ...definition,
-              defaultValue: copyOf(
-                definition.defaultValue,
-                previousDefaults.get(definition.id) ?? null,
-                null
-              )
-            }
-          : definition
-      ),
-      componentPropertyAssignments: mapValues(
-        fields.componentPropertyAssignments ?? {},
-        (value, id) =>
-          swapProperties.has(id)
-            ? copyOf(value, target.componentPropertyAssignments[id] ?? null, null)
-            : value
+      ...resolvedReferences(
+        source,
+        target,
+        {
+          component: (id, previous) => copyOf(id, previous, scope),
+          // The layers an instance's overrides name are inside the component it draws.
+          layer: (id, component) => tree.get(id) ?? copyOf(id, null, component),
+          variable
+        },
+        swapProperties
       ),
       locked: true,
       boundVariables: Object.fromEntries(
         Object.entries(source.boundVariables).map(([field, id]) => [field, variable(id)])
       ),
-      instanceOverrides: remapInstanceOverrideState(source.instanceOverrides, {
-        // The layers an instance's overrides name are inside the component it draws.
-        node: (id) => tree.get(id) ?? copyOf(id, null, componentId),
-        variable
-      }),
       librarySource: libraryDefinitionSource(revision, source.id) ?? target.librarySource
     })
   }

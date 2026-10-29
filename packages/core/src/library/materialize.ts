@@ -5,6 +5,7 @@ import { remapCopiedReferences } from './copied-references'
 import { findLibraryDefinition } from './definitions'
 import { assertLibraryAssetKey, assertLibraryId, libraryAssetIdentityKey } from './identity'
 import type { ComponentLibraryRevision, LibraryAssetDescriptor } from './types'
+import { assetComponent } from './variants'
 
 const INTERNAL_LIBRARY_PAGE_NAME = 'OpenPencil library definitions'
 
@@ -134,16 +135,6 @@ export function copyImages(
   }
 }
 
-function defaultComponent(graph: SceneGraph, root: SceneNode): SceneNode | undefined {
-  if (root.type === 'COMPONENT') return root
-  return root.childIds
-    .flatMap((id) => {
-      const child = graph.getNode(id)
-      return child?.type === 'COMPONENT' ? [child] : []
-    })
-    .sort((left, right) => left.y - right.y || left.x - right.x)[0]
-}
-
 export function materializeLibraryAsset(
   consumer: SceneGraph,
   revision: ComponentLibraryRevision,
@@ -155,7 +146,7 @@ export function materializeLibraryAsset(
   consumer.enabledLibraries.set(libraryId, { libraryId, revisionId, enabled: true })
   const existing = findLibraryDefinition(consumer, libraryId, assetKey, revisionId)
   if (existing) {
-    const component = defaultComponent(consumer, existing)
+    const component = assetComponent(consumer, existing)?.component
     if (!component) throw new Error(`Materialized asset has no component: ${assetKey}`)
     return {
       componentId: component.id,
@@ -179,7 +170,7 @@ export function materializeLibraryAsset(
   const rootId = mappedIds.get(descriptor.sourceNodeId)
   const root = rootId ? consumer.getNode(rootId) : undefined
   if (!root) throw new Error(`Failed to materialize library asset: ${assetKey}`)
-  const component = defaultComponent(consumer, root)
+  const component = assetComponent(consumer, root)?.component
   if (!component) throw new Error(`Library asset has no component: ${assetKey}`)
   return {
     componentId: component.id,
